@@ -2,7 +2,7 @@
   <img src="https://raw.githubusercontent.com/mklab-se/presemd/main/media/presemd-horizontal.png" alt="presemd" width="600">
 </p>
 
-<h1 align="center">presemd</h1>
+<h1 align="center">MDeck</h1>
 
 <p align="center">
   A markdown-based presentation tool.<br>
