@@ -1,0 +1,27 @@
+[package]
+name = "presemd"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "A markdown-based presentation tool"
+readme = "../../README.md"
+keywords = ["markdown", "presentation", "slides"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "presemd"
+path = "src/main.rs"
+
+[dependencies]
+eframe.workspace = true
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/presemd-v{ version }-{ target }.{ archive-format }"
+bin-dir = "presemd{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"

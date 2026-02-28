@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/presemd",
+]
+
+[workspace.package]
+version = "0.1.1"
+edition = "2024"
+authors = ["Kristofer Liljeblad <kristofer@mklab.se>"]
+license = "MIT"
+repository = "https://github.com/mklab-se/presemd"
+rust-version = "1.85"
+
+[workspace.dependencies]
+eframe = "0.33"
