@@ -41,3 +41,15 @@ syntect = { version = "5", default-features = false, features = ["default-syntax
 
 # Directories
 dirs = "6.0"
+
+# HTTP client (for AI icon generation)
+ureq = { version = "3", features = ["json"] }
+
+# JSON serialization
+serde_json = "1.0"
+
+# Base64 encoding/decoding
+base64 = "0.22"
+
+# Parallelism
+rayon = "1.10"

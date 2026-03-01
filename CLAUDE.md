@@ -37,6 +37,7 @@ crates/
         completion.rs # Shell completion generation
         config.rs    # Config show/set
         export.rs    # PNG export via headless eframe rendering
+        generate_icons.rs # AI icon generation for diagrams
         spec.rs      # Format specification printer
       parser/          # Markdown-to-slide parser (frontmatter, blocks, inlines, splitter)
       render/          # Slide rendering engine
@@ -66,6 +67,7 @@ mdeck config show            # Display configuration
 mdeck config set <key> <val> # Set config value (defaults.theme, defaults.transition, defaults.aspect)
 mdeck export <file.md>       # Export slides as PNG images (1920x1080 default)
 mdeck export <file.md> --width 3840 --height 2160  # Export at custom resolution
+mdeck generate-icons <file.md> # Generate AI diagram icons (requires image_generation config)
 mdeck completion <shell>     # Generate shell completions (bash, zsh, fish, powershell)
 mdeck spec                   # Print format specification
 mdeck spec --short           # Print quick reference card
@@ -87,6 +89,8 @@ mdeck --help                 # Show help
 - **Transitions:** fade, horizontal slide, spatial (directional pan), with smooth easing; animated overview zoom in/out
 - **Scroll/overflow:** Per-slide smooth animated scroll with fade gradients; Up/Down keys; `scroll_targets` + lerp for animation
 - **Keyboard:** Space/N/Right forward, P/Left back, Up/Down scroll, G grid, T transition, D theme, F fullscreen, H HUD, Esc×2 exit
+- **Diagrams:** Grid layout (when `pos:` specified) or auto-layout; geometric fallback icons; AI-generated icon images from `media/diagram-icons/`; 5 arrow types (`->`, `<-`, `<->`, `--`, `-->`)
+- **AI icon generation:** `ureq` for HTTP, OpenAI DALL-E 3 and Google Gemini Imagen APIs; icons saved to `media/diagram-icons/{name}.png`
 - FPS overlay in top-right corner
 
 ## Releasing
@@ -105,6 +109,7 @@ mdeck --help                 # Show help
 - Edition 2024, MSRV 1.85
 - `cargo clippy` with `-D warnings` (zero warnings policy)
 - `cargo fmt` enforced in CI
+- **File size guideline:** When a source file exceeds ~500 lines, evaluate whether it would benefit from being split into smaller modules (`mod` in Rust). Look for natural boundaries: distinct type groups, self-contained algorithms, test helpers, or feature areas that could live in their own files. Propose a split plan before refactoring.
 
 ## Quality Requirements
 
@@ -113,6 +118,8 @@ mdeck --help                 # Show help
 - **Always run the full CI check before pushing:** `cargo fmt --all -- --check && cargo clippy --workspace -- -D warnings && cargo test --workspace`
 - Write unit tests for all new functionality
 - Test edge cases and error paths, not just the happy path
+- **Every bug fix must include a regression test.** When fixing a bug, first write a test that reproduces it (fails before the fix, passes after). This prevents the bug from coming back and documents the expected behavior.
+- When fixing incorrect tests, explain why the original assertion was wrong before updating it
 
 ### Visual Testing
 - **Always verify rendering changes visually before declaring work complete.** Use the export command to generate slide PNGs and inspect them:

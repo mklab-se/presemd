@@ -84,6 +84,12 @@ pub enum Commands {
         height: u32,
     },
 
+    /// Generate diagram icons using AI image generation
+    GenerateIcons {
+        /// Markdown file containing diagrams
+        file: PathBuf,
+    },
+
     /// Print the mdeck markdown format specification
     Spec {
         /// Print a concise quick-reference card instead of the full spec
@@ -145,6 +151,12 @@ impl Cli {
                 width,
                 height,
             }) => crate::commands::export::run(file, output_dir, width, height),
+            Some(Commands::GenerateIcons { file }) => {
+                if !file.exists() {
+                    anyhow::bail!("File not found: {}", file.display());
+                }
+                crate::commands::generate_icons::run(&file)
+            }
             Some(Commands::Spec { short }) => {
                 crate::commands::spec::run(short);
                 Ok(())

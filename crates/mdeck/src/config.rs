@@ -12,6 +12,9 @@ pub struct Config {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ai: Option<AiConfig>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_generation: Option<ImageGenConfig>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -100,6 +103,58 @@ impl AiProvider {
             .stderr(std::process::Stdio::null())
             .status()
             .is_ok()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageGenConfig {
+    pub provider: ImageGenProvider,
+
+    /// API key. If not set, falls back to environment variable
+    /// (OPENAI_API_KEY for openai, GEMINI_API_KEY for gemini).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ImageGenProvider {
+    #[default]
+    OpenAi,
+    Gemini,
+}
+
+impl ImageGenProvider {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::OpenAi => "OpenAI (DALL-E)",
+            Self::Gemini => "Google Gemini (Imagen)",
+        }
+    }
+
+    pub fn env_var_name(&self) -> &'static str {
+        match self {
+            Self::OpenAi => "OPENAI_API_KEY",
+            Self::Gemini => "GEMINI_API_KEY",
+        }
+    }
+}
+
+impl std::fmt::Display for ImageGenProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.display_name())
+    }
+}
+
+impl ImageGenConfig {
+    /// Resolve API key from config or environment variable.
+    pub fn resolve_api_key(&self) -> Option<String> {
+        if let Some(key) = &self.api_key {
+            if !key.is_empty() {
+                return Some(key.clone());
+            }
+        }
+        std::env::var(self.provider.env_var_name()).ok()
     }
 }
 

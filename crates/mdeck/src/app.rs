@@ -72,11 +72,14 @@ struct PresentationApp {
     transition: Option<ActiveTransition>,
     image_cache: ImageCache,
     show_hud: bool,
+    show_raw_markdown: bool,
     toast: Option<Toast>,
     last_ctrl_c: Option<Instant>,
     last_esc: Option<Instant>,
     reveal_steps: Vec<usize>,
     max_steps: Vec<usize>,
+    /// Timestamp of when each slide's reveal_step was last incremented (for animation)
+    reveal_timestamps: Vec<Option<Instant>>,
     scroll_offsets: Vec<f32>,
     scroll_targets: Vec<f32>,
     frame_count: u32,
@@ -154,6 +157,7 @@ impl PresentationApp {
             .collect();
         let slide_count = presentation.slides.len();
         let reveal_steps = vec![0; slide_count];
+        let reveal_timestamps = vec![None; slide_count];
         let scroll_offsets = vec![0.0; slide_count];
         let scroll_targets = vec![0.0; slide_count];
 
@@ -168,11 +172,13 @@ impl PresentationApp {
             transition: None,
             image_cache,
             show_hud: false,
+            show_raw_markdown: false,
             toast: None,
             last_ctrl_c: None,
             last_esc: None,
             reveal_steps,
             max_steps,
+            reveal_timestamps,
             scroll_offsets,
             scroll_targets,
             frame_count: 0,
@@ -215,6 +221,7 @@ impl PresentationApp {
         // If we have reveal steps remaining, reveal next item
         if self.reveal_steps[idx] < self.max_steps[idx] {
             self.reveal_steps[idx] += 1;
+            self.reveal_timestamps[idx] = Some(Instant::now());
             return;
         }
 
@@ -308,6 +315,7 @@ impl PresentationApp {
     fn draw_slide(&self, ui: &egui::Ui, index: usize, rect: egui::Rect, opacity: f32, scale: f32) {
         if index < self.presentation.slides.len() {
             let reveal = self.reveal_steps.get(index).copied().unwrap_or(0);
+            let timestamp = self.reveal_timestamps.get(index).copied().flatten();
             render::render_slide(
                 ui,
                 &self.presentation.slides[index],
@@ -316,6 +324,7 @@ impl PresentationApp {
                 opacity,
                 &self.image_cache,
                 reveal,
+                timestamp,
                 scale,
             );
         }
@@ -612,6 +621,10 @@ impl eframe::App for PresentationApp {
                     if i.key_pressed(egui::Key::H) {
                         self.show_hud = !self.show_hud;
                     }
+                    // Toggle raw markdown overlay: R
+                    if i.key_pressed(egui::Key::R) {
+                        self.show_raw_markdown = !self.show_raw_markdown;
+                    }
                     // Scroll: Up/Down (animate toward target)
                     if i.key_pressed(egui::Key::ArrowUp) {
                         let idx = self.current_slide;
@@ -799,6 +812,12 @@ impl eframe::App for PresentationApp {
                 if self.show_hud && matches!(self.mode, AppMode::Presentation) {
                     draw_hud(ui, &self.theme, rect, scale);
                 }
+
+                // Raw markdown overlay (presentation mode only)
+                if self.show_raw_markdown && matches!(self.mode, AppMode::Presentation) {
+                    let raw = &self.presentation.slides[self.current_slide].raw_source;
+                    draw_raw_markdown_overlay(ui, raw, &self.theme, rect, scale);
+                }
             });
     }
 }
@@ -855,6 +874,7 @@ impl PresentationApp {
         // Render slide inside a clipped child UI so content doesn't bleed outside
         let scrolled_rect = rect.translate(egui::vec2(0.0, -scroll_offset));
         let reveal = self.reveal_steps.get(idx).copied().unwrap_or(0);
+        let timestamp = self.reveal_timestamps.get(idx).copied().flatten();
         let child_ui = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt("scroll_clip"));
         render::render_slide(
             &child_ui,
@@ -864,6 +884,7 @@ impl PresentationApp {
             1.0,
             &self.image_cache,
             reveal,
+            timestamp,
             scale,
         );
 
@@ -1598,6 +1619,7 @@ fn draw_hud(ui: &egui::Ui, theme: &Theme, rect: egui::Rect, scale: f32) {
         ("D", "Toggle theme"),
         ("F", "Toggle fullscreen"),
         ("H", "Toggle this HUD"),
+        ("R", "Toggle raw markdown"),
         ("Q", "Quit"),
         ("Home", "First slide"),
         ("End", "Last slide"),
@@ -1652,6 +1674,68 @@ fn draw_hud(ui: &egui::Ui, theme: &Theme, rect: egui::Rect, scale: f32) {
 
         y += line_height;
     }
+}
+
+fn draw_raw_markdown_overlay(
+    ui: &egui::Ui,
+    raw: &str,
+    theme: &Theme,
+    rect: egui::Rect,
+    scale: f32,
+) {
+    let bg = Theme::with_opacity(theme.code_background, 0.92);
+    let text_color = Theme::with_opacity(theme.code_foreground, 0.95);
+    let title_color = Theme::with_opacity(theme.heading_color, 0.9);
+
+    let padding = 32.0 * scale;
+    let margin = 48.0 * scale;
+
+    let overlay_rect = rect.shrink(margin);
+    ui.painter().rect_filled(overlay_rect, 12.0 * scale, bg);
+
+    // Title
+    let title_galley = ui.painter().layout_no_wrap(
+        "Raw Markdown".to_string(),
+        egui::FontId::proportional(20.0 * scale),
+        title_color,
+    );
+    let title_pos = egui::pos2(overlay_rect.left() + padding, overlay_rect.top() + padding);
+    ui.painter().galley(title_pos, title_galley, title_color);
+
+    // Dismiss hint
+    let hint_color = Theme::with_opacity(theme.foreground, 0.5);
+    let hint_galley = ui.painter().layout_no_wrap(
+        "Press R to close".to_string(),
+        egui::FontId::proportional(14.0 * scale),
+        hint_color,
+    );
+    let hint_pos = egui::pos2(
+        overlay_rect.right() - padding - hint_galley.rect.width(),
+        overlay_rect.top() + padding + 3.0 * scale,
+    );
+    ui.painter().galley(hint_pos, hint_galley, hint_color);
+
+    // Markdown content in monospace font
+    let text_top = overlay_rect.top() + padding + 36.0 * scale;
+    let text_width = overlay_rect.width() - padding * 2.0;
+    let font = egui::FontId::monospace(14.0 * scale);
+
+    let galley = ui
+        .painter()
+        .layout(raw.to_string(), font, text_color, text_width);
+    let text_pos = egui::pos2(overlay_rect.left() + padding, text_top);
+    ui.painter().galley(text_pos, galley, text_color);
+}
+
+fn load_app_icon() -> Option<egui::IconData> {
+    let png_bytes = include_bytes!("../../../media/MDeck-logo.png");
+    let image = image::load_from_memory(png_bytes).ok()?.into_rgba8();
+    let (w, h) = image.dimensions();
+    Some(egui::IconData {
+        rgba: image.into_raw(),
+        width: w,
+        height: h,
+    })
 }
 
 pub fn run(
@@ -1715,6 +1799,12 @@ pub fn run(
         egui::ViewportBuilder::default()
             .with_fullscreen(true)
             .with_title(&title)
+    };
+
+    let viewport = if let Some(icon) = load_app_icon() {
+        viewport.with_icon(std::sync::Arc::new(icon))
+    } else {
+        viewport
     };
 
     let options = eframe::NativeOptions {

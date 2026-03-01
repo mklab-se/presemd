@@ -28,6 +28,10 @@ dirs.workspace = true
 regex.workspace = true
 image.workspace = true
 syntect.workspace = true
+ureq.workspace = true
+serde_json.workspace = true
+base64.workspace = true
+rayon.workspace = true
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/mdeck-v{ version }-{ target }.{ archive-format }"

@@ -48,11 +48,8 @@ pub fn render(
         total_height += theme.body_size * scale + 20.0 * scale;
     }
 
-    let start_y = if heading.is_some() {
-        content_rect.top() + 20.0 * scale
-    } else {
-        (content_rect.center().y - total_height / 2.0).max(content_rect.top() + 20.0 * scale)
-    };
+    let start_y =
+        (content_rect.center().y - total_height / 2.0).max(content_rect.top() + 20.0 * scale);
     let mut y = start_y;
 
     // Draw heading if present

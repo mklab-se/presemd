@@ -129,12 +129,20 @@ fn split_by_heading_inference(chunk: &str, slides: &mut Vec<String>) {
         }
 
         if !in_code_fence && line.starts_with("# ") && has_content {
-            // This H1 starts a new slide
+            // This H1 starts a new slide.
+            // Move any trailing directives from the old slide to the new one,
+            // since `@layout: X` placed just before a `# Heading` belongs to
+            // the heading's slide.
             let slide_text = current.trim().to_string();
-            if !slide_text.is_empty() {
-                slides.push(slide_text);
+            let (content_part, trailing_directives) = strip_trailing_directives(&slide_text);
+            if !content_part.is_empty() {
+                slides.push(content_part);
             }
             current = String::new();
+            if !trailing_directives.is_empty() {
+                current.push_str(&trailing_directives);
+                current.push('\n');
+            }
             has_content = false;
         }
 
@@ -153,6 +161,38 @@ fn split_by_heading_inference(chunk: &str, slides: &mut Vec<String>) {
     if !slide_text.is_empty() {
         slides.push(slide_text);
     }
+}
+
+/// Split trailing directive lines (and blank lines before them) from a slide's raw text.
+/// Returns `(content, directives)` where `directives` contains only `@key: value` lines.
+fn strip_trailing_directives(text: &str) -> (String, String) {
+    let lines: Vec<&str> = text.lines().collect();
+
+    // Walk backwards from the end, collecting contiguous directive / blank lines
+    let mut split_at = lines.len();
+    for i in (0..lines.len()).rev() {
+        let trimmed = lines[i].trim();
+        if trimmed.is_empty() || is_directive(trimmed) {
+            split_at = i;
+        } else {
+            break;
+        }
+    }
+
+    if split_at == lines.len() {
+        // Nothing to strip
+        return (text.to_string(), String::new());
+    }
+
+    let content = lines[..split_at].join("\n").trim().to_string();
+    let directives: String = lines[split_at..]
+        .iter()
+        .filter(|l| !l.trim().is_empty())
+        .copied()
+        .collect::<Vec<&str>>()
+        .join("\n");
+
+    (content, directives)
 }
 
 fn is_dash_separator(line: &str) -> bool {
@@ -219,6 +259,25 @@ mod tests {
         let slides = split(body);
         // Should produce 2 slides, not 3 (overlapping separators = single break)
         assert_eq!(slides.len(), 2);
+    }
+
+    #[test]
+    fn test_directive_before_heading_moves_to_next_slide() {
+        let body = "# Title\n\nSubtitle\n\n@layout: two-column\n# Second Slide\n\nContent";
+        let slides = split(body);
+        assert_eq!(slides.len(), 2, "Expected 2 slides, got {}", slides.len());
+        // Directive should NOT be on the first slide
+        assert!(
+            !slides[0].contains("@layout"),
+            "First slide should not contain @layout directive: {}",
+            slides[0]
+        );
+        // Directive should be on the second slide (before the heading)
+        assert!(
+            slides[1].contains("@layout: two-column"),
+            "Second slide should start with @layout directive: {}",
+            slides[1]
+        );
     }
 
     #[test]

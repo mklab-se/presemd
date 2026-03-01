@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Diagram rendering overhaul: proper grid layout, auto-layout, much larger nodes
+- Diagram parser: skip comment lines, parse `icon:` and `pos:` metadata, detect all 5 arrow types (`->`, `<-`, `<->`, `--`, `-->`)
+- Geometric fallback icons for 15+ node types (user, server, database, cloud, lock, api, cache, etc.)
+- AI-generated diagram icons via `mdeck generate-icons <file.md>` command
+- Icon images loaded from `media/diagram-icons/{name}.png` when available
+- OpenAI DALL-E 3 and Google Gemini Imagen API support for icon generation
+- `image_generation` config section for API provider and key
+- Edge rendering with straight lines, nearest-face connection points, and proper arrowheads
+- Dashed lines for `--` and `-->` arrow types
+- Edge label pills with semi-transparent backgrounds
+- Parallel edge offset when multiple edges connect the same node pair
+- 8 unit tests for diagram parsing
+- 4 unit tests for icon collection
+
+### Changed
+
+- Diagram nodes now render as rounded rectangles with icon + label (was: tiny pills in a single row)
+- Diagram layout uses grid positioning or auto-layout (was: single horizontal row)
+
 ## [0.3.0] - 2026-02-28
 
 ### Changed

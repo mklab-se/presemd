@@ -102,6 +102,7 @@ impl eframe::App for ExportApp {
                         1.0,
                         &self.image_cache,
                         reveal,
+                        None, // no animation in export
                         scale,
                     );
                 }

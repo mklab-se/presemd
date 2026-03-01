@@ -29,6 +29,8 @@ pub struct Slide {
     pub directives: Vec<Directive>,
     pub blocks: Vec<Block>,
     pub layout: Layout,
+    /// The original raw markdown source text for this slide.
+    pub raw_source: String,
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +137,7 @@ pub fn parse(content: &str, _base_path: &Path) -> Presentation {
         .into_iter()
         .filter(|raw| !raw.trim().is_empty())
         .map(|raw| {
+            let raw_source = raw.clone();
             let (directives, content) = blocks::extract_directives(&raw);
             let blocks = blocks::parse(&content);
             let layout = classify_layout(&directives, &blocks);
@@ -142,6 +145,7 @@ pub fn parse(content: &str, _base_path: &Path) -> Presentation {
                 directives,
                 blocks,
                 layout,
+                raw_source,
             }
         })
         .collect();
@@ -287,12 +291,13 @@ fn classify_layout(directives: &[Directive], blocks: &[Block]) -> Layout {
 }
 
 /// Count the maximum number of reveal steps in a slide's blocks.
-/// Each `+` (NextStep) marker in any list counts as one step.
+/// Each `+` (NextStep) marker in any list or diagram counts as one step.
 pub fn compute_max_steps(blocks: &[Block]) -> usize {
     blocks
         .iter()
         .map(|b| match b {
             Block::List { items, .. } => count_next_steps(items),
+            Block::Diagram { content } => crate::render::diagram::count_diagram_steps(content),
             _ => 0,
         })
         .max()

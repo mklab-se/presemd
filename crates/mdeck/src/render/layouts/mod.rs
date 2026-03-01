@@ -1,6 +1,8 @@
 pub mod bullet;
 pub mod code;
 pub mod content;
+pub mod diagram;
+pub mod gallery;
 pub mod image_slide;
 pub mod quote;
 pub mod section;

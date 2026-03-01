@@ -1,8 +1,11 @@
+pub mod diagram;
 pub mod image_cache;
 pub mod layouts;
 pub mod syntax;
 pub mod text;
 pub mod transition;
+
+use std::time::Instant;
 
 use eframe::egui;
 
@@ -45,6 +48,7 @@ pub fn render_slide(
     opacity: f32,
     image_cache: &ImageCache,
     reveal_step: usize,
+    reveal_timestamp: Option<Instant>,
     scale: f32,
 ) {
     match slide.layout {
@@ -101,7 +105,7 @@ pub fn render_slide(
             reveal_step,
             scale,
         ),
-        Layout::Gallery => layouts::content::render(
+        Layout::Gallery => layouts::gallery::render(
             ui,
             slide,
             theme,
@@ -111,7 +115,7 @@ pub fn render_slide(
             reveal_step,
             scale,
         ),
-        Layout::Diagram => layouts::content::render(
+        Layout::Diagram => layouts::diagram::render(
             ui,
             slide,
             theme,
@@ -119,6 +123,7 @@ pub fn render_slide(
             opacity,
             image_cache,
             reveal_step,
+            reveal_timestamp,
             scale,
         ),
     }

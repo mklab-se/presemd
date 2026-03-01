@@ -88,4 +88,32 @@ impl Theme {
             "InspiredGitHub"
         }
     }
+
+    /// Return a palette of distinct colors for diagram edges.
+    /// Colors are chosen to be visually distinct and readable against the theme background.
+    pub fn edge_palette(&self) -> Vec<Color32> {
+        if self.name == "dark" {
+            vec![
+                Color32::from_rgb(0x5C, 0xB8, 0xFF), // bright blue
+                Color32::from_rgb(0xFF, 0x7E, 0x67), // coral
+                Color32::from_rgb(0x5C, 0xDB, 0x95), // mint green
+                Color32::from_rgb(0xE8, 0xA8, 0x38), // amber
+                Color32::from_rgb(0xC0, 0x7E, 0xF1), // purple
+                Color32::from_rgb(0x4E, 0xD4, 0xD4), // teal
+                Color32::from_rgb(0xF0, 0x6E, 0xAA), // pink
+                Color32::from_rgb(0xA3, 0xBE, 0x58), // olive green
+            ]
+        } else {
+            vec![
+                Color32::from_rgb(0x1A, 0x6B, 0xB5), // deep blue
+                Color32::from_rgb(0xC7, 0x3E, 0x1D), // brick red
+                Color32::from_rgb(0x1E, 0x8A, 0x5A), // forest green
+                Color32::from_rgb(0xB8, 0x7B, 0x0A), // dark amber
+                Color32::from_rgb(0x7B, 0x3F, 0xA0), // purple
+                Color32::from_rgb(0x18, 0x8A, 0x8D), // teal
+                Color32::from_rgb(0xC4, 0x3B, 0x7A), // magenta
+                Color32::from_rgb(0x5A, 0x7A, 0x2B), // olive
+            ]
+        }
+    }
 }

@@ -1,6 +1,6 @@
 # Contributing to mdeck
 
-Thank you for considering contributing to mdeck! This guide will help you get started.
+Thank you for considering contributing to MDeck! This guide will help you get started.
 
 ## Getting Started
 
