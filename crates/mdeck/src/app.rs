@@ -7,6 +7,7 @@ use std::time::Instant;
 
 use notify_debouncer_mini::{DebouncedEventKind, Debouncer, new_debouncer, notify};
 
+use crate::check::CheckReport;
 use crate::config::Config;
 use crate::parser::{self, Presentation};
 use crate::render;
@@ -120,6 +121,18 @@ struct PresentationApp {
     frame_profiles: Vec<FrameProfile>,
     /// Cancel flag for the background diagram route pre-caching thread.
     precache_cancel: Arc<AtomicBool>,
+    /// Receives the check report from the background precache thread.
+    precache_report_rx: Option<mpsc::Receiver<CheckReport>>,
+    /// Whether the precache report has already been printed.
+    precache_report_printed: bool,
+    /// Suppress non-essential output.
+    quiet: bool,
+    /// Whether the virtual "The End" slide is being displayed.
+    on_end_slide: bool,
+    /// Whether the screen is blacked out (toggled with `.` key).
+    blackout: bool,
+    /// Cached texture for the embedded logo (loaded once on first draw).
+    end_logo_texture: Option<egui::TextureHandle>,
 }
 
 /// Per-frame timing data for performance profiling.
@@ -170,6 +183,7 @@ impl PresentationApp {
         watcher_rx: mpsc::Receiver<()>,
         watcher: Debouncer<notify::RecommendedWatcher>,
         content_hash: u64,
+        quiet: bool,
     ) -> Self {
         let _ = windowed; // used at window creation time
 
@@ -234,6 +248,12 @@ impl PresentationApp {
             last_content_hash: content_hash,
             frame_profiles: Vec::with_capacity(2000),
             precache_cancel: Arc::new(AtomicBool::new(false)),
+            precache_report_rx: None,
+            precache_report_printed: false,
+            quiet,
+            on_end_slide: false,
+            blackout: false,
+            end_logo_texture: None,
         }
     }
 
@@ -256,6 +276,11 @@ impl PresentationApp {
             return;
         }
 
+        // Already on end slide — nowhere to go
+        if self.on_end_slide {
+            return;
+        }
+
         let idx = self.current_slide;
 
         // If we have reveal steps remaining, reveal next item
@@ -265,8 +290,11 @@ impl PresentationApp {
             return;
         }
 
-        // Otherwise advance to the next slide
+        // On last real slide — transition to end slide
         if idx >= self.slide_count().saturating_sub(1) {
+            self.scroll_offsets[idx] = 0.0;
+            self.scroll_targets[idx] = 0.0;
+            self.on_end_slide = true;
             return;
         }
 
@@ -282,6 +310,12 @@ impl PresentationApp {
 
     fn navigate_backward(&mut self) {
         if self.transition.is_some() {
+            return;
+        }
+
+        // Coming back from end slide — return to last real slide
+        if self.on_end_slide {
+            self.on_end_slide = false;
             return;
         }
 
@@ -318,6 +352,7 @@ impl PresentationApp {
             self.scroll_offsets[cur] = 0.0;
             self.scroll_targets[cur] = 0.0;
             self.current_slide = index;
+            self.on_end_slide = false;
         }
     }
 
@@ -413,6 +448,7 @@ impl PresentationApp {
         render::diagram::clear_route_cache();
         self.precache_cancel = Arc::new(AtomicBool::new(false));
         self.transition = None;
+        self.on_end_slide = false;
         self.pen_strokes.clear();
         self.arrows.clear();
         self.active_draw = ActiveDraw::None;
@@ -429,18 +465,20 @@ impl PresentationApp {
 
     /// Collect all diagram content from every slide and spawn a background thread
     /// to pre-compute their routing caches at reference resolution (1920×1080).
-    fn spawn_diagram_precache(&self) {
-        let diagrams: Vec<String> = self
+    fn spawn_diagram_precache(&mut self) {
+        let diagrams: Vec<(usize, String)> = self
             .presentation
             .slides
             .iter()
-            .flat_map(|s| s.blocks.iter())
-            .filter_map(|b| {
-                if let parser::Block::Diagram { content } = b {
-                    Some(content.clone())
-                } else {
-                    None
-                }
+            .enumerate()
+            .flat_map(|(i, s)| {
+                s.blocks.iter().filter_map(move |b| {
+                    if let parser::Block::Diagram { content } = b {
+                        Some((i + 1, content.clone()))
+                    } else {
+                        None
+                    }
+                })
             })
             .collect();
 
@@ -448,7 +486,12 @@ impl PresentationApp {
             return;
         }
 
-        render::diagram::precache_all_diagrams_background(diagrams, self.precache_cancel.clone());
+        let rx = render::diagram::precache_all_diagrams_with_report(
+            diagrams,
+            self.precache_cancel.clone(),
+        );
+        self.precache_report_rx = Some(rx);
+        self.precache_report_printed = false;
     }
 
     fn draw_slide(&self, ui: &egui::Ui, index: usize, rect: egui::Rect, opacity: f32, scale: f32) {
@@ -467,6 +510,93 @@ impl PresentationApp {
                 scale,
             );
         }
+    }
+
+    fn draw_end_slide(&mut self, ui: &egui::Ui, rect: egui::Rect, scale: f32) {
+        // "The End" centered
+        let title_color = egui::Color32::from_gray(220);
+        let galley = ui.painter().layout_no_wrap(
+            "The End".to_string(),
+            egui::FontId::proportional(72.0 * scale),
+            title_color,
+        );
+        let title_pos = egui::pos2(
+            rect.center().x - galley.rect.width() / 2.0,
+            rect.center().y - galley.rect.height() / 2.0 - 20.0 * scale,
+        );
+        ui.painter().galley(title_pos, galley, title_color);
+
+        // Bottom-right attribution block: logo + text
+        let margin = 32.0 * scale;
+        let logo_height = 48.0 * scale;
+
+        // Load logo texture lazily
+        if self.end_logo_texture.is_none() {
+            static LOGO_BYTES: &[u8] = include_bytes!("../media/logo-small.png");
+            if let Ok(img) = image::load_from_memory(LOGO_BYTES) {
+                let rgba = img.to_rgba8();
+                let (w, h) = (rgba.width() as usize, rgba.height() as usize);
+                let pixels = rgba.into_raw();
+                let color_image = egui::ColorImage::from_rgba_unmultiplied([w, h], &pixels);
+                let texture = ui.ctx().load_texture(
+                    "mdeck-end-logo",
+                    color_image,
+                    egui::TextureOptions::LINEAR,
+                );
+                self.end_logo_texture = Some(texture);
+            }
+        }
+
+        let text_color = egui::Color32::from_gray(140);
+        let url_color = egui::Color32::from_gray(100);
+
+        let powered_galley = ui.painter().layout_no_wrap(
+            "Powered by MDeck".to_string(),
+            egui::FontId::proportional(14.0 * scale),
+            text_color,
+        );
+        let url_galley = ui.painter().layout_no_wrap(
+            "https://github.com/mklab-se/mdeck".to_string(),
+            egui::FontId::proportional(11.0 * scale),
+            url_color,
+        );
+
+        // Position: bottom-right corner
+        let text_block_width = powered_galley.rect.width().max(url_galley.rect.width());
+        let logo_aspect = 192.0 / 128.0; // width/height of the embedded logo
+        let logo_width = logo_height * logo_aspect;
+
+        let block_width = logo_width + 10.0 * scale + text_block_width;
+        let block_x = rect.right() - margin - block_width;
+        let block_y = rect.bottom() - margin - logo_height;
+
+        // Draw logo
+        if let Some(ref texture) = self.end_logo_texture {
+            let logo_rect = egui::Rect::from_min_size(
+                egui::pos2(block_x, block_y),
+                egui::vec2(logo_width, logo_height),
+            );
+            // Rounded clip for the logo
+            ui.painter()
+                .rect_filled(logo_rect, 6.0 * scale, egui::Color32::from_gray(30));
+            let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+            ui.painter()
+                .image(texture.id(), logo_rect, uv, egui::Color32::WHITE);
+        }
+
+        // Draw text lines to the right of logo
+        let text_x = block_x + logo_width + 10.0 * scale;
+        let text_y = block_y
+            + (logo_height - powered_galley.rect.height() - url_galley.rect.height() - 4.0 * scale)
+                / 2.0;
+
+        ui.painter()
+            .galley(egui::pos2(text_x, text_y), powered_galley, text_color);
+        ui.painter().galley(
+            egui::pos2(text_x, text_y + 14.0 * scale + 4.0 * scale),
+            url_galley,
+            url_color,
+        );
     }
 
     fn grid_columns(&self) -> usize {
@@ -679,6 +809,17 @@ impl eframe::App for PresentationApp {
             self.reload_presentation();
         }
 
+        // Poll for diagram precache report
+        if let Some(ref rx) = self.precache_report_rx {
+            if let Ok(report) = rx.try_recv() {
+                if report.has_warnings() && !self.quiet && !self.precache_report_printed {
+                    report.print_brief();
+                    self.precache_report_printed = true;
+                }
+                self.precache_report_rx = None;
+            }
+        }
+
         let mode = self.mode;
 
         // Collect viewport commands to send AFTER the input closure
@@ -752,6 +893,17 @@ impl eframe::App for PresentationApp {
                 return;
             }
 
+            // Blackout toggle: . (period)
+            if i.key_pressed(egui::Key::Period) {
+                self.blackout = !self.blackout;
+                return;
+            }
+
+            // Block all other input while blacked out
+            if self.blackout {
+                return;
+            }
+
             match mode {
                 AppMode::Presentation => {
                     // Forward: Right, N, Space
@@ -802,6 +954,7 @@ impl eframe::App for PresentationApp {
                     }
                     // G: animate into grid overview
                     if i.key_pressed(egui::Key::G) && self.transition.is_none() {
+                        self.on_end_slide = false;
                         self.mode = AppMode::OverviewTransition {
                             selected: self.current_slide,
                             entering: true,
@@ -865,7 +1018,7 @@ impl eframe::App for PresentationApp {
         }
 
         // Mouse input handling (presentation mode only, outside ctx.input closure)
-        if matches!(mode, AppMode::Presentation) && self.transition.is_none() {
+        if matches!(mode, AppMode::Presentation) && self.transition.is_none() && !self.blackout {
             self.handle_mouse_input(ctx);
         }
 
@@ -907,7 +1060,11 @@ impl eframe::App for PresentationApp {
             self.toast = None;
         }
 
-        let bg = self.theme.background;
+        let bg = if self.blackout || self.on_end_slide {
+            egui::Color32::BLACK
+        } else {
+            self.theme.background
+        };
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(bg).inner_margin(0.0))
@@ -915,7 +1072,18 @@ impl eframe::App for PresentationApp {
                 let rect = ui.max_rect();
                 ui.painter().rect_filled(rect, 0.0, bg);
 
+                // Blackout mode: solid black, nothing else rendered
+                if self.blackout {
+                    return;
+                }
+
                 let scale = Self::compute_scale(rect);
+
+                // End slide: "The End" with logo attribution
+                if self.on_end_slide {
+                    self.draw_end_slide(ui, rect, scale);
+                    return;
+                }
 
                 let render_start = Instant::now();
                 match self.mode {
@@ -1805,6 +1973,7 @@ fn draw_hud(ui: &egui::Ui, theme: &Theme, rect: egui::Rect, scale: f32) {
         ("D", "Toggle theme"),
         ("F", "Toggle fullscreen"),
         ("H", "Toggle this HUD"),
+        (".", "Blackout screen"),
         ("R", "Debug overlay (L/R/off)"),
         ("Q", "Quit"),
         ("Home", "First slide"),
@@ -2071,6 +2240,7 @@ pub fn run(
     windowed: bool,
     start_slide: Option<usize>,
     start_overview: bool,
+    quiet: bool,
 ) -> anyhow::Result<()> {
     let file = file.canonicalize().unwrap_or(file);
     let content = std::fs::read_to_string(&file)?;
@@ -2154,6 +2324,7 @@ pub fn run(
                 watcher_rx,
                 watcher,
                 content_hash,
+                quiet,
             );
             app.current_slide = initial_slide;
             if initial_overview {

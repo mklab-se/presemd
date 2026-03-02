@@ -3,8 +3,10 @@ pub mod routing;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex, mpsc};
 use std::time::Instant;
+
+use crate::check::{CheckCategory, CheckReport, CheckWarning};
 
 use crate::render::image_cache::ImageCache;
 use crate::theme::Theme;
@@ -24,29 +26,25 @@ pub fn clear_route_cache() {
     ROUTE_CACHE.lock().unwrap().clear();
 }
 
-/// Pre-compute and cache routes for a diagram so that the first render is fast.
-/// Call this for adjacent slides while the current slide is displayed.
-pub fn precache_diagram_routes(content: &str, max_width: f32, max_height: f32, scale: f32) {
+/// Check a single diagram's routes and return any failure warning strings.
+/// Also populates the route cache as a side effect.
+pub fn check_diagram_routes(content: &str) -> Vec<String> {
     let (nodes, edges, _scale_directive) = parse_diagram(content);
     if nodes.is_empty() || edges.is_empty() {
-        return;
+        return Vec::new();
     }
 
-    let diagram_height = if max_height > 0.0 {
-        max_height
-    } else {
-        500.0 * scale
-    };
+    // Reuse the same layout/routing setup as precache_diagram_routes
+    let scale = 1.0_f32;
+    let max_width = 1920.0_f32;
+    let diagram_height = 500.0 * scale;
     let padding = 30.0 * scale;
     let area_width = max_width - padding * 2.0;
     let area_height = diagram_height - padding * 2.0;
     let lane_spacing = 20.0 * scale;
 
-    // Use origin (0, 0) — grid cell positions are relative, so the absolute
-    // origin doesn't affect routing node col/row assignments.
     let (layouts, grid) = layout_nodes(&nodes, area_width, area_height, 0.0, 0.0, scale);
 
-    // Build node rects
     let mut node_rects: HashMap<String, egui::Rect> = HashMap::new();
     for (i, node) in nodes.iter().enumerate() {
         let layout = &layouts[i];
@@ -57,7 +55,6 @@ pub fn precache_diagram_routes(content: &str, max_width: f32, max_height: f32, s
         node_rects.insert(node.name.clone(), node_rect);
     }
 
-    // Build routing input (all edges visible — precache the fully-revealed state)
     let routing_nodes: Vec<routing::types::DiagramNode> = nodes
         .iter()
         .filter_map(|n| {
@@ -95,25 +92,56 @@ pub fn precache_diagram_routes(content: &str, max_width: f32, max_height: f32, s
     };
 
     let cache_key = route_cache_key(&routing_nodes, &routing_edges, &config);
-    let mut cache = ROUTE_CACHE.lock().unwrap();
-    cache
-        .entry(cache_key)
-        .or_insert_with(|| routing::route_all_edges(&routing_nodes, &routing_edges, &config));
+    let output = {
+        let mut cache = ROUTE_CACHE.lock().unwrap();
+        cache
+            .entry(cache_key)
+            .or_insert_with(|| routing::route_all_edges(&routing_nodes, &routing_edges, &config))
+            .clone()
+    };
+
+    output
+        .results
+        .iter()
+        .filter_map(|(_edge, result)| {
+            if let routing::types::RouteResult::Failure { warning } = result {
+                Some(warning.clone())
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
-/// Pre-compute routes for all diagrams in the presentation on a background thread.
+/// Pre-compute routes for all diagrams and collect a `CheckReport` with any warnings.
 /// The `cancel` flag is checked before each computation; set it to `true` to abort
 /// early (e.g. on file reload). Routing already uses rayon internally, so a single
 /// background thread is sufficient to saturate cores.
-pub fn precache_all_diagrams_background(diagrams: Vec<String>, cancel: Arc<AtomicBool>) {
+///
+/// `diagrams` is a list of `(1-indexed slide number, diagram content)`.
+pub fn precache_all_diagrams_with_report(
+    diagrams: Vec<(usize, String)>,
+    cancel: Arc<AtomicBool>,
+) -> mpsc::Receiver<CheckReport> {
+    let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        for content in &diagrams {
+        let mut report = CheckReport::new();
+        for (slide_num, content) in &diagrams {
             if cancel.load(Ordering::Relaxed) {
+                let _ = tx.send(report);
                 return;
             }
-            precache_diagram_routes(content, 1920.0, 0.0, 1.0);
+            for warning_msg in check_diagram_routes(content) {
+                report.add(CheckWarning {
+                    slide: *slide_num,
+                    category: CheckCategory::DiagramRouting,
+                    message: warning_msg,
+                });
+            }
         }
+        let _ = tx.send(report);
     });
+    rx
 }
 
 /// Routing weights loaded once from config at startup.
@@ -2200,8 +2228,7 @@ pub fn draw_diagram_sized(
                     port_end,
                 )
             }
-            routing::types::RouteResult::Failure { warning } => {
-                eprintln!("ROUTE WARNING: {warning}");
+            routing::types::RouteResult::Failure { .. } => {
                 // Fallback: direct connection
                 let exit_face = choose_exit_face(from_rect, to_rect.center());
                 let entry_face = choose_entry_face(to_rect, from_rect.center());

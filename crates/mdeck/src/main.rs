@@ -1,5 +1,6 @@
 mod app;
 mod banner;
+mod check;
 mod cli;
 mod commands;
 mod config;

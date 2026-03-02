@@ -60,6 +60,7 @@ crates/
 
 ```bash
 mdeck <file.md>              # Launch presentation
+mdeck <file.md> --check      # Validate presentation (exit code 1 if warnings)
 mdeck ai init                # Set up AI provider (interactive)
 mdeck ai status              # Show AI config
 mdeck ai remove              # Remove AI config
@@ -88,7 +89,8 @@ mdeck --help                 # Show help
 - **PNG export:** Headless eframe window using `ViewportCommand::Screenshot` / `Event::Screenshot`
 - **Transitions:** fade, horizontal slide, spatial (directional pan), with smooth easing; animated overview zoom in/out
 - **Scroll/overflow:** Per-slide smooth animated scroll with fade gradients; Up/Down keys; `scroll_targets` + lerp for animation
-- **Keyboard:** Space/N/Right forward, P/Left back, Up/Down scroll, G grid, T transition, D theme, F fullscreen, H HUD, Esc×2 exit
+- **Keyboard:** Space/N/Right forward, P/Left back, Up/Down scroll, G grid, T transition, D theme, F fullscreen, H HUD, `.` blackout, Esc×2 exit
+- **End slide:** Virtual "The End" slide with MDeck logo shown when navigating past the last slide
 - **Diagrams:** Grid layout (when `pos:` specified) or auto-layout; geometric fallback icons; AI-generated icon images from `media/diagram-icons/`; 5 arrow types (`->`, `<-`, `<->`, `--`, `-->`)
 - **AI icon generation:** `ureq` for HTTP, OpenAI DALL-E 3 and Google Gemini Imagen APIs; icons saved to `media/diagram-icons/{name}.png`
 - FPS overlay in top-right corner

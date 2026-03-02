@@ -32,6 +32,10 @@ pub struct Cli {
     #[arg(long, global = false)]
     pub overview: bool,
 
+    /// Validate presentation and report problems without launching GUI
+    #[arg(long, global = false)]
+    pub check: bool,
+
     /// Increase output verbosity (-v for debug, -vv for trace)
     #[arg(short, long, action = ArgAction::Count, global = true)]
     pub verbose: u8,
@@ -170,7 +174,10 @@ impl Cli {
                     if !file.exists() {
                         anyhow::bail!("File not found: {}", file.display());
                     }
-                    crate::app::run(file, self.windowed, self.slide, self.overview)
+                    if self.check {
+                        return crate::commands::check::run(file, self.verbose, self.quiet);
+                    }
+                    crate::app::run(file, self.windowed, self.slide, self.overview, self.quiet)
                 } else {
                     use clap::CommandFactory;
                     let mut cmd = Self::command();

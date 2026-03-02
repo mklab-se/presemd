@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2026-03-02
+
+### Added
+
+- **"The End" slide:** Virtual end slide shown when navigating past the last slide, with centered "The End" title and MDeck logo/attribution in the bottom-right corner
+- **Blackout mode:** Press `.` (period) to toggle screen to solid black for audience attention; press `.` again to resume
+- **`--check` CLI flag:** Validate presentations without launching the GUI — reports diagram routing warnings with exit code 1 on problems, 0 on success
+- Structured warning system (`CheckReport`, `CheckWarning`, `CheckCategory`) for extensible presentation validation
+- Diagram route warnings collected once during background precache instead of per-frame `eprintln!` spam
+- Brief one-liner warning summary printed to stderr in GUI mode when routing issues are found
+
+### Changed
+
+- Replaced `precache_all_diagrams_background` with `precache_all_diagrams_with_report` that returns a `CheckReport` via channel
+- Removed noisy per-frame `eprintln!("ROUTE WARNING: ...")` from `draw_diagram_sized`; fallback drawing logic preserved
+- HUD (press H) now shows `.` blackout shortcut
+
 ## [0.6.0] - 2026-03-02
 
 ### Added
