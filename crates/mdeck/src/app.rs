@@ -1,6 +1,9 @@
 use eframe::egui;
 use std::path::PathBuf;
+use std::sync::mpsc;
 use std::time::Instant;
+
+use notify_debouncer_mini::{DebouncedEventKind, Debouncer, new_debouncer, notify};
 
 use crate::config::Config;
 use crate::parser::{self, Presentation};
@@ -70,9 +73,10 @@ enum AppMode {
 
 struct PresentationApp {
     presentation: Presentation,
-    #[allow(dead_code)]
     file_path: PathBuf,
     current_slide: usize,
+    watcher_rx: mpsc::Receiver<()>,
+    _watcher: Debouncer<notify::RecommendedWatcher>,
     mode: AppMode,
     theme: Theme,
     default_transition: TransitionKind,
@@ -142,7 +146,13 @@ impl Toast {
 }
 
 impl PresentationApp {
-    fn new(file: PathBuf, presentation: Presentation, windowed: bool) -> Self {
+    fn new(
+        file: PathBuf,
+        presentation: Presentation,
+        windowed: bool,
+        watcher_rx: mpsc::Receiver<()>,
+        watcher: Debouncer<notify::RecommendedWatcher>,
+    ) -> Self {
         let _ = windowed; // used at window creation time
 
         let theme_name = presentation.meta.theme.as_deref().unwrap_or("light");
@@ -173,6 +183,8 @@ impl PresentationApp {
             presentation,
             file_path: file,
             current_slide: 0,
+            watcher_rx,
+            _watcher: watcher,
             mode: AppMode::Presentation,
             theme,
             default_transition,
@@ -317,6 +329,68 @@ impl PresentationApp {
             self.frame_count = 0;
             self.fps_update = Instant::now();
         }
+    }
+
+    fn reload_presentation(&mut self) {
+        let content = match std::fs::read_to_string(&self.file_path) {
+            Ok(c) => c,
+            Err(e) => {
+                self.toast = Some(Toast::new(format!("Reload error: {e}")));
+                return;
+            }
+        };
+
+        let base_path = self.file_path.parent().unwrap_or(std::path::Path::new("."));
+        let new_presentation = parser::parse(&content, base_path);
+
+        if new_presentation.slides.is_empty() {
+            self.toast = Some(Toast::new("Reload: no slides found".to_string()));
+            return;
+        }
+
+        // Preserve slide position
+        let old_raw = self
+            .presentation
+            .slides
+            .get(self.current_slide)
+            .map(|s| s.raw_source.as_str());
+        self.current_slide =
+            find_matching_slide(old_raw, self.current_slide, &new_presentation.slides);
+
+        let slide_count = new_presentation.slides.len();
+
+        // Recompute per-slide vectors
+        self.max_steps = new_presentation
+            .slides
+            .iter()
+            .map(|s| parser::compute_max_steps(&s.blocks))
+            .collect();
+        self.reveal_steps = vec![0; slide_count];
+        self.reveal_timestamps = vec![None; slide_count];
+        self.scroll_offsets = vec![0.0; slide_count];
+        self.scroll_targets = vec![0.0; slide_count];
+
+        // Update theme/transition from new frontmatter
+        if let Some(name) = &new_presentation.meta.theme {
+            self.theme = Theme::from_name(name);
+        }
+        if let Some(name) = &new_presentation.meta.transition {
+            self.default_transition = TransitionKind::from_name(name);
+        }
+
+        self.presentation = new_presentation;
+        self.image_cache.clear();
+        self.transition = None;
+        self.pen_strokes.clear();
+        self.arrows.clear();
+        self.active_draw = ActiveDraw::None;
+
+        // Clamp grid selection if in overview mode
+        if let AppMode::Grid { ref mut selected } = self.mode {
+            *selected = (*selected).min(slide_count.saturating_sub(1));
+        }
+
+        self.toast = Some(Toast::new(format!("Reloaded ({slide_count} slides)")));
     }
 
     fn draw_slide(&self, ui: &egui::Ui, index: usize, rect: egui::Rect, opacity: f32, scale: f32) {
@@ -537,6 +611,13 @@ impl PresentationApp {
 impl eframe::App for PresentationApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.update_fps();
+
+        // Check for file changes
+        if self.watcher_rx.try_recv().is_ok() {
+            // Drain any extra queued events
+            while self.watcher_rx.try_recv().is_ok() {}
+            self.reload_presentation();
+        }
 
         let mode = self.mode;
 
@@ -1813,12 +1894,52 @@ fn load_app_icon() -> Option<egui::IconData> {
     })
 }
 
+/// Find the best matching slide index after a reload.
+///
+/// If the old slide's raw source matches a new slide exactly, use that index.
+/// Otherwise fall back to the old index, clamped to bounds.
+fn find_matching_slide(
+    old_raw: Option<&str>,
+    old_index: usize,
+    new_slides: &[parser::Slide],
+) -> usize {
+    if let Some(raw) = old_raw {
+        if let Some(pos) = new_slides.iter().position(|s| s.raw_source == raw) {
+            return pos;
+        }
+    }
+    old_index.min(new_slides.len().saturating_sub(1))
+}
+
+fn spawn_file_watcher(
+    path: &std::path::Path,
+    ctx: egui::Context,
+) -> anyhow::Result<(mpsc::Receiver<()>, Debouncer<notify::RecommendedWatcher>)> {
+    let (tx, rx) = mpsc::channel();
+    let mut debouncer = new_debouncer(
+        std::time::Duration::from_millis(500),
+        move |events: Result<Vec<notify_debouncer_mini::DebouncedEvent>, notify::Error>| {
+            if let Ok(events) = events {
+                if events.iter().any(|e| e.kind == DebouncedEventKind::Any) {
+                    let _ = tx.send(());
+                    ctx.request_repaint();
+                }
+            }
+        },
+    )?;
+    debouncer
+        .watcher()
+        .watch(path, notify::RecursiveMode::NonRecursive)?;
+    Ok((rx, debouncer))
+}
+
 pub fn run(
     file: PathBuf,
     windowed: bool,
     start_slide: Option<usize>,
     start_overview: bool,
 ) -> anyhow::Result<()> {
+    let file = file.canonicalize().unwrap_or(file);
     let content = std::fs::read_to_string(&file)?;
     let base_path = file.parent().unwrap_or(std::path::Path::new("."));
     let presentation = parser::parse(&content, base_path);
@@ -1890,8 +2011,9 @@ pub fn run(
     eframe::run_native(
         &title,
         options,
-        Box::new(move |_cc| {
-            let mut app = PresentationApp::new(file, presentation, windowed);
+        Box::new(move |cc| {
+            let (watcher_rx, watcher) = spawn_file_watcher(&file, cc.egui_ctx.clone())?;
+            let mut app = PresentationApp::new(file, presentation, windowed, watcher_rx, watcher);
             app.current_slide = initial_slide;
             if initial_overview {
                 app.mode = AppMode::Grid {
@@ -1902,4 +2024,48 @@ pub fn run(
         }),
     )
     .map_err(|e| anyhow::anyhow!("{e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::{Layout, Slide};
+
+    fn slide(raw: &str) -> Slide {
+        Slide {
+            directives: vec![],
+            blocks: vec![],
+            layout: Layout::Content,
+            raw_source: raw.to_string(),
+        }
+    }
+
+    #[test]
+    fn find_matching_slide_exact_match() {
+        let slides = vec![slide("a"), slide("b"), slide("c")];
+        // Was at index 1 ("b"), new slides inserted "x" before it
+        let new_slides = vec![slide("x"), slide("a"), slide("b"), slide("c")];
+        assert_eq!(find_matching_slide(Some("b"), 1, &new_slides), 2);
+    }
+
+    #[test]
+    fn find_matching_slide_edited_stays_at_index() {
+        let old_raw = "old content";
+        let new_slides = vec![slide("a"), slide("new content"), slide("c")];
+        // Old raw doesn't match any new slide — clamp to old index
+        assert_eq!(find_matching_slide(Some(old_raw), 1, &new_slides), 1);
+    }
+
+    #[test]
+    fn find_matching_slide_clamps_when_out_of_bounds() {
+        let new_slides = vec![slide("a"), slide("b")];
+        // Was at index 5, only 2 slides now
+        assert_eq!(find_matching_slide(Some("gone"), 5, &new_slides), 1);
+    }
+
+    #[test]
+    fn find_matching_slide_no_old_raw_returns_zero() {
+        let new_slides = vec![slide("a"), slide("b")];
+        assert_eq!(find_matching_slide(None, 0, &new_slides), 0);
+    }
 }

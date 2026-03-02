@@ -1,4 +1,5 @@
 use super::*;
+use crate::render::diagram::routing::types::CostWeights;
 
 #[test]
 fn adjacent_horizontal_right() {
@@ -96,7 +97,7 @@ fn route_complexity_includes_turns() {
     let output = route_all_edges(&nodes, &edges, &config(3, 3));
     assert_all_success(&output);
     let route = get_route(&output, 0);
-    assert!(route.complexity.total() >= 2.0); // At least 2 for length.
+    assert!(route.complexity.total(&CostWeights::default()) >= 2.0); // At least 2 for length.
 }
 
 #[test]
@@ -300,11 +301,13 @@ fn complexity_total_correct() {
     let output = route_all_edges(&nodes, &edges, &config(3, 3));
     assert_all_success(&output);
     let route = get_route(&output, 0);
+    let weights = CostWeights::default();
     let expected_total = route.complexity.length
         + route.complexity.turns as f64
-        + route.complexity.lane_changes as f64;
+        + route.complexity.lane_changes as f64
+        + route.complexity.crossings as f64;
     assert!(
-        (route.complexity.total() - expected_total).abs() < 0.001,
+        (route.complexity.total(&weights) - expected_total).abs() < 0.001,
         "Total complexity mismatch"
     );
 }

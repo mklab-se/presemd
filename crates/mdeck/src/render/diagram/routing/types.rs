@@ -213,12 +213,22 @@ pub struct RouteComplexity {
     pub turns: u32,
     /// Number of lane changes (excluding those simultaneous with a turn).
     pub lane_changes: u32,
+    /// Number of crossings with already-claimed routes.
+    pub crossings: u32,
 }
 
 impl RouteComplexity {
-    /// Total complexity score: length + turns + lane_changes.
-    pub fn total(&self) -> f64 {
-        self.length + self.turns as f64 + self.lane_changes as f64
+    /// Total weighted complexity score.
+    pub fn total(&self, weights: &CostWeights) -> f64 {
+        weights.length * self.length
+            + weights.turn * self.turns as f64
+            + weights.lane_change * self.lane_changes as f64
+            + weights.crossing * self.crossings as f64
+    }
+
+    /// Total complexity using default weights (all 1.0).
+    fn total_default(&self) -> f64 {
+        self.total(&CostWeights::default())
     }
 }
 
@@ -226,8 +236,8 @@ impl Eq for RouteComplexity {}
 
 impl Ord for RouteComplexity {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.total()
-            .partial_cmp(&other.total())
+        self.total_default()
+            .partial_cmp(&other.total_default())
             .unwrap_or(Ordering::Equal)
             .then_with(|| {
                 self.length
@@ -236,6 +246,7 @@ impl Ord for RouteComplexity {
             })
             .then(self.turns.cmp(&other.turns))
             .then(self.lane_changes.cmp(&other.lane_changes))
+            .then(self.crossings.cmp(&other.crossings))
     }
 }
 
@@ -272,6 +283,26 @@ pub struct DiagramEdge {
     pub label: Option<String>,
 }
 
+/// Multiplier weights for route complexity scoring.
+#[derive(Debug, Clone, Copy)]
+pub struct CostWeights {
+    pub length: f64,
+    pub turn: f64,
+    pub lane_change: f64,
+    pub crossing: f64,
+}
+
+impl Default for CostWeights {
+    fn default() -> Self {
+        Self {
+            length: 1.0,
+            turn: 1.0,
+            lane_change: 1.0,
+            crossing: 1.0,
+        }
+    }
+}
+
 /// Configuration for the routing engine.
 #[derive(Debug, Clone)]
 pub struct RoutingConfig {
@@ -279,6 +310,8 @@ pub struct RoutingConfig {
     pub h_lane_capacity: i32,
     /// Number of lanes available on vertical segments.
     pub v_lane_capacity: i32,
+    /// Cost weights for complexity scoring.
+    pub weights: CostWeights,
 }
 
 impl Default for RoutingConfig {
@@ -286,6 +319,7 @@ impl Default for RoutingConfig {
         Self {
             h_lane_capacity: 3,
             v_lane_capacity: 3,
+            weights: CostWeights::default(),
         }
     }
 }

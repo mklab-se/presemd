@@ -1,4 +1,5 @@
 mod complex;
+mod crossings;
 mod crowded;
 mod determinism;
 mod edge_cases;
@@ -6,7 +7,7 @@ mod invalid;
 mod serialization;
 mod simple;
 
-use super::types::{DiagramEdge, DiagramNode, GridCoord, RoutingConfig};
+use super::types::{CostWeights, DiagramEdge, DiagramNode, GridCoord, RoutingConfig};
 use super::{RoutingOutput, route_all_edges};
 
 /// Helper to create a DiagramNode.
@@ -36,11 +37,21 @@ fn edge_labeled(source: &str, target: &str, label: &str) -> DiagramEdge {
     }
 }
 
-/// Helper to create a RoutingConfig.
+/// Helper to create a RoutingConfig with default weights.
 fn config(h: i32, v: i32) -> RoutingConfig {
     RoutingConfig {
         h_lane_capacity: h,
         v_lane_capacity: v,
+        weights: CostWeights::default(),
+    }
+}
+
+/// Helper to create a RoutingConfig with custom weights.
+fn config_weighted(h: i32, v: i32, weights: CostWeights) -> RoutingConfig {
+    RoutingConfig {
+        h_lane_capacity: h,
+        v_lane_capacity: v,
+        weights,
     }
 }
 

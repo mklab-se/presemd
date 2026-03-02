@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 #[cfg(test)]
 use super::types::Waypoint;
-use super::types::{Lane, Route, SegmentId};
+use super::types::{GridCoord, Lane, Route, SegmentId};
 
 /// Tracks which lanes are claimed on each segment.
 #[derive(Debug, Clone, Default)]
@@ -52,6 +52,94 @@ impl LaneOccupancy {
             .into_iter()
             .filter(|lane| self.is_available(seg, *lane))
             .collect()
+    }
+
+    /// Whether a segment has any claimed lanes.
+    pub fn has_claimed_lanes(&self, seg: &SegmentId) -> bool {
+        self.claimed.get(seg).is_some_and(|s| !s.is_empty())
+    }
+
+    /// Count how many crossings a segment on a given lane would create at its
+    /// endpoints. Detects two types of crossings:
+    ///
+    /// 1. **Pass-through**: perpendicular claimed segments on BOTH sides of a
+    ///    node — a route goes straight through, always a crossing regardless of
+    ///    lane.
+    ///
+    /// 2. **Turn conflict**: perpendicular claimed segment on ONE side only
+    ///    (an existing route turns at this node). A crossing occurs when the
+    ///    new route's lane puts it on the **same side** as the perpendicular
+    ///    segment, causing a visual overlap at the turn point. Lane 0 (center)
+    ///    never triggers a turn conflict.
+    ///
+    /// Lane convention (absolute):
+    /// - Horizontal segments: positive lane = south, negative = north
+    /// - Vertical segments: positive lane = east, negative = west
+    ///
+    /// Endpoints listed in `skip_endpoints` are excluded from detection.
+    /// Pass source and target node centers here so that routes converging at
+    /// a hub node are not counted as crossings.
+    pub fn count_crossings(
+        &self,
+        seg: &SegmentId,
+        lane: Lane,
+        skip_endpoints: &[GridCoord],
+    ) -> u32 {
+        let mut crossings = 0;
+        let is_horiz = seg.is_horizontal();
+
+        for endpoint in [seg.from, seg.to] {
+            if skip_endpoints.contains(&endpoint) {
+                continue;
+            }
+            if is_horiz {
+                let above = GridCoord {
+                    col2: endpoint.col2,
+                    row2: endpoint.row2 - 1,
+                };
+                let below = GridCoord {
+                    col2: endpoint.col2,
+                    row2: endpoint.row2 + 1,
+                };
+                let seg_above = SegmentId::new(above, endpoint);
+                let seg_below = SegmentId::new(endpoint, below);
+                let has_above = self.has_claimed_lanes(&seg_above);
+                let has_below = self.has_claimed_lanes(&seg_below);
+
+                if has_above && has_below {
+                    // Pass-through: always a crossing.
+                    crossings += 1;
+                } else if lane != 0 && ((has_above && lane < 0) || (has_below && lane > 0)) {
+                    // Turn conflict: lane on same side as the turning route.
+                    // Absolute: lane < 0 = north side, lane > 0 = south side.
+                    crossings += 1;
+                }
+            } else {
+                let left = GridCoord {
+                    col2: endpoint.col2 - 1,
+                    row2: endpoint.row2,
+                };
+                let right = GridCoord {
+                    col2: endpoint.col2 + 1,
+                    row2: endpoint.row2,
+                };
+                let seg_left = SegmentId::new(left, endpoint);
+                let seg_right = SegmentId::new(endpoint, right);
+                let has_left = self.has_claimed_lanes(&seg_left);
+                let has_right = self.has_claimed_lanes(&seg_right);
+
+                if has_left && has_right {
+                    // Pass-through: always a crossing.
+                    crossings += 1;
+                } else if lane != 0 && ((has_left && lane < 0) || (has_right && lane > 0)) {
+                    // Turn conflict: lane on same side as the turning route.
+                    // Absolute: lane < 0 = west side, lane > 0 = east side.
+                    crossings += 1;
+                }
+            }
+        }
+
+        crossings
     }
 
     /// Get the set of claimed lanes on a segment.
@@ -134,6 +222,7 @@ pub fn compute_complexity(waypoints: &[Waypoint]) -> super::types::RouteComplexi
         length,
         turns,
         lane_changes,
+        crossings: 0,
     }
 }
 

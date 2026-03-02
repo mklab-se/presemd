@@ -58,7 +58,7 @@ pub fn route_all_edges(
                 let source = GridCoord::from_int(sc, sr);
                 let target = GridCoord::from_int(tc, tr);
 
-                match find_best_route(&graph, &occupancy, source, target) {
+                match find_best_route(&graph, &occupancy, source, target, &config.weights) {
                     Some(route) => {
                         occupancy.claim_route(&route);
                         RouteResult::Success(route)

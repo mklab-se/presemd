@@ -1,11 +1,62 @@
 pub mod routing;
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
+use std::sync::LazyLock;
 use std::time::Instant;
 
 use crate::render::image_cache::ImageCache;
 use crate::theme::Theme;
 use eframe::egui::{self, Color32, FontFamily, FontId, Pos2, Stroke};
+
+// ─── Route cache ────────────────────────────────────────────────────────────
+
+// Thread-local cache for routing results. Routing is expensive (A* search with
+// rayon parallelism per edge) and the inputs rarely change between frames.
+// We cache the output keyed by a hash of (nodes, edges, config).
+thread_local! {
+    static ROUTE_CACHE: RefCell<Option<RouteCacheEntry>> = const { RefCell::new(None) };
+}
+
+struct RouteCacheEntry {
+    key: u64,
+    output: routing::types::RoutingOutput,
+}
+
+/// Routing weights loaded once from config at startup.
+static ROUTING_WEIGHTS: LazyLock<routing::types::CostWeights> = LazyLock::new(|| {
+    crate::config::Config::load_or_default()
+        .routing
+        .unwrap_or_default()
+        .to_cost_weights()
+});
+
+/// Compute a hash key for the routing inputs.
+fn route_cache_key(
+    nodes: &[routing::types::DiagramNode],
+    edges: &[routing::types::DiagramEdge],
+    config: &routing::types::RoutingConfig,
+) -> u64 {
+    let mut hasher = std::hash::DefaultHasher::new();
+    for n in nodes {
+        n.name.hash(&mut hasher);
+        n.col.hash(&mut hasher);
+        n.row.hash(&mut hasher);
+    }
+    for e in edges {
+        e.source.hash(&mut hasher);
+        e.target.hash(&mut hasher);
+        e.label.hash(&mut hasher);
+    }
+    config.h_lane_capacity.hash(&mut hasher);
+    config.v_lane_capacity.hash(&mut hasher);
+    config.weights.length.to_bits().hash(&mut hasher);
+    config.weights.turn.to_bits().hash(&mut hasher);
+    config.weights.lane_change.to_bits().hash(&mut hasher);
+    config.weights.crossing.to_bits().hash(&mut hasher);
+    hasher.finish()
+}
 
 // ─── Diagram data structures ─────────────────────────────────────────────────
 
@@ -289,17 +340,48 @@ fn waypoints_to_pixels(
         let px = coord_to_pixel_x(wp.coord, grid);
         let py = coord_to_pixel_y(wp.coord, grid);
 
-        // Apply lane offset perpendicular to travel direction
-        let (offset_x, offset_y) = if i < n - 1 {
+        // Compute incoming offset (from previous segment's direction and lane)
+        let prev_wp = &route.waypoints[i - 1];
+        let in_dir = coord_direction(prev_wp.coord, wp.coord);
+        let in_lane = prev_wp.lane;
+        let (in_ox, in_oy) = lane_offset(in_dir, in_lane, lane_spacing);
+
+        // Compute outgoing offset (from this waypoint's direction and lane to next)
+        let (out_ox, out_oy) = if i + 1 < n {
             let next_wp = &route.waypoints[i + 1];
-            let dir = coord_direction(wp.coord, next_wp.coord);
-            lane_offset(dir, wp.lane, lane_spacing)
+            let out_dir = coord_direction(wp.coord, next_wp.coord);
+            lane_offset(out_dir, wp.lane, lane_spacing)
         } else {
             (0.0, 0.0)
         };
 
-        let pt = Pos2::new(px + offset_x, py + offset_y);
-        // Only push if different from previous
+        // At a turn (horizontal↔vertical), compute a single combined corner point
+        // that keeps both the incoming and outgoing segments straight:
+        //   - Horizontal segments offset Y → keep incoming Y at the corner
+        //   - Vertical segments offset X → keep outgoing X at the corner
+        let is_turn = in_dir.is_horizontal() != {
+            if i + 1 < n {
+                let next_wp = &route.waypoints[i + 1];
+                coord_direction(wp.coord, next_wp.coord).is_horizontal()
+            } else {
+                in_dir.is_horizontal()
+            }
+        };
+
+        let pt = if is_turn {
+            let (cx, cy) = if in_dir.is_horizontal() {
+                // Horizontal → Vertical: keep incoming Y, use outgoing X
+                (out_ox, in_oy)
+            } else {
+                // Vertical → Horizontal: keep incoming X, use outgoing Y
+                (in_ox, out_oy)
+            };
+            Pos2::new(px + cx, py + cy)
+        } else {
+            // Straight segment: use outgoing offset (matches next segment)
+            Pos2::new(px + out_ox, py + out_oy)
+        };
+
         if let Some(prev) = pixels.last() {
             if (*prev - pt).length() < 1.0 {
                 continue;
@@ -365,20 +447,23 @@ fn coord_direction(
 }
 
 /// Compute pixel offset for a lane perpendicular to the travel direction.
-/// Lane 0 = center (no offset). Positive lanes offset to the right of travel,
-/// negative lanes offset to the left.
+/// Lane 0 = center (no offset). Uses absolute convention:
+///   - Horizontal segments: positive lanes offset south (+Y), negative offset north (-Y)
+///   - Vertical segments: positive lanes offset east (+X), negative offset west (-X)
+///
+/// This ensures lane numbers map to the same physical position on a segment
+/// regardless of travel direction.
 fn lane_offset(dir: routing::types::Direction, lane: i32, lane_spacing: f32) -> (f32, f32) {
     if lane == 0 {
         return (0.0, 0.0);
     }
     let offset = lane as f32 * lane_spacing;
-    match dir {
-        // Traveling North/South: lanes offset in X (right of travel)
-        routing::types::Direction::North => (-offset, 0.0), // right of north = west for positive
-        routing::types::Direction::South => (offset, 0.0),  // right of south = east for positive
-        // Traveling East/West: lanes offset in Y (right of travel)
-        routing::types::Direction::East => (0.0, offset), // right of east = south for positive
-        routing::types::Direction::West => (0.0, -offset), // right of west = north for positive
+    if dir.is_horizontal() {
+        // Horizontal travel: lane offset in Y. Positive lane = south.
+        (0.0, offset)
+    } else {
+        // Vertical travel: lane offset in X. Positive lane = east.
+        (offset, 0.0)
     }
 }
 
@@ -1516,14 +1601,20 @@ pub fn diagram_debug_info(content: &str) -> String {
     for (edge, result) in &routing_output.results {
         match result {
             routing::types::RouteResult::Success(route) => {
+                let label = edge
+                    .label
+                    .as_deref()
+                    .map_or(String::new(), |l| format!(" \"{l}\""));
                 writeln!(
                     out,
-                    "  {} -> {}: OK len={:.1} turns={} lc={}",
+                    "  {} -> {}{}: OK len={:.1} turns={} lc={} cx={}",
                     edge.source,
                     edge.target,
+                    label,
                     route.complexity.length,
                     route.complexity.turns,
                     route.complexity.lane_changes,
+                    route.complexity.crossings,
                 )
                 .unwrap();
                 let mut route_str = String::new();
@@ -1538,10 +1629,14 @@ pub fn diagram_debug_info(content: &str) -> String {
                 writeln!(out, "    {route_str}").unwrap();
             }
             routing::types::RouteResult::Failure { warning } => {
+                let label = edge
+                    .label
+                    .as_deref()
+                    .map_or(String::new(), |l| format!(" \"{l}\""));
                 writeln!(
                     out,
-                    "  {} -> {}: FAIL: {}",
-                    edge.source, edge.target, warning
+                    "  {} -> {}{}: FAIL: {}",
+                    edge.source, edge.target, label, warning
                 )
                 .unwrap();
             }
@@ -1831,9 +1926,25 @@ pub fn draw_diagram_sized(
     let config = routing::types::RoutingConfig {
         h_lane_capacity: compute_h_capacity(&grid, &node_rects, lane_spacing),
         v_lane_capacity: compute_v_capacity(&grid, &node_rects, lane_spacing),
+        weights: *ROUTING_WEIGHTS,
     };
 
-    let routing_output = routing::route_all_edges(&routing_nodes, &routing_edges, &config);
+    // Use cached routing output — only recompute when inputs change.
+    let cache_key = route_cache_key(&routing_nodes, &routing_edges, &config);
+    let routing_output = ROUTE_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(entry) = cache.as_ref() {
+            if entry.key == cache_key {
+                return entry.output.clone();
+            }
+        }
+        let output = routing::route_all_edges(&routing_nodes, &routing_edges, &config);
+        *cache = Some(RouteCacheEntry {
+            key: cache_key,
+            output: output.clone(),
+        });
+        output
+    });
 
     // Track port usage per (node, face) to spread connections
     let mut port_counts: HashMap<(String, Face), usize> = HashMap::new();
@@ -2529,17 +2640,44 @@ mod diagram_tests {
 
     #[test]
     fn test_lane_offset_positive() {
-        // Lane 1 traveling East: offset in Y (south = positive)
+        // Absolute convention: positive lane = south for horizontal, east for vertical.
+        // Lane +1 traveling East → south (+Y)
         let (ox, oy) = lane_offset(routing::types::Direction::East, 1, 20.0);
         assert_eq!(ox, 0.0);
         assert_eq!(oy, 20.0);
+
+        // Lane +1 traveling West → also south (+Y) — absolute, not direction-relative
+        let (ox, oy) = lane_offset(routing::types::Direction::West, 1, 20.0);
+        assert_eq!(ox, 0.0);
+        assert_eq!(oy, 20.0);
+
+        // Lane +1 traveling South → east (+X)
+        let (ox, oy) = lane_offset(routing::types::Direction::South, 1, 20.0);
+        assert_eq!(ox, 20.0);
+        assert_eq!(oy, 0.0);
+
+        // Lane +1 traveling North → also east (+X)
+        let (ox, oy) = lane_offset(routing::types::Direction::North, 1, 20.0);
+        assert_eq!(ox, 20.0);
+        assert_eq!(oy, 0.0);
     }
 
     #[test]
     fn test_lane_offset_negative() {
+        // Lane -1 traveling East → north (-Y)
         let (ox, oy) = lane_offset(routing::types::Direction::East, -1, 20.0);
         assert_eq!(ox, 0.0);
         assert_eq!(oy, -20.0);
+
+        // Lane -1 traveling West → also north (-Y)
+        let (ox, oy) = lane_offset(routing::types::Direction::West, -1, 20.0);
+        assert_eq!(ox, 0.0);
+        assert_eq!(oy, -20.0);
+
+        // Lane -1 traveling North → west (-X)
+        let (ox, oy) = lane_offset(routing::types::Direction::North, -1, 20.0);
+        assert_eq!(ox, -20.0);
+        assert_eq!(oy, 0.0);
     }
 
     // ── Integration tests: full routing pipeline ─────────────────────────────
@@ -2567,6 +2705,7 @@ mod diagram_tests {
         let config = routing::types::RoutingConfig {
             h_lane_capacity: 3,
             v_lane_capacity: 3,
+            weights: routing::types::CostWeights::default(),
         };
         let output = routing::route_all_edges(&nodes, &edges, &config);
         assert_eq!(output.results.len(), 1);
@@ -2613,6 +2752,7 @@ mod diagram_tests {
         let config = routing::types::RoutingConfig {
             h_lane_capacity: 3,
             v_lane_capacity: 3,
+            weights: routing::types::CostWeights::default(),
         };
         let output = routing::route_all_edges(&nodes, &edges, &config);
         match &output.results[0].1 {
@@ -2649,6 +2789,7 @@ mod diagram_tests {
         let config = routing::types::RoutingConfig {
             h_lane_capacity: 3,
             v_lane_capacity: 3,
+            weights: routing::types::CostWeights::default(),
         };
         let output = routing::route_all_edges(&nodes, &edges, &config);
 
@@ -2722,12 +2863,161 @@ mod diagram_tests {
         let config = routing::types::RoutingConfig {
             h_lane_capacity: 5,
             v_lane_capacity: 5,
+            weights: routing::types::CostWeights::default(),
         };
         let output = routing::route_all_edges(&nodes, &edges, &config);
         assert_eq!(output.results.len(), 2);
         // Both should succeed
         for (_, result) in &output.results {
             assert!(matches!(result, routing::types::RouteResult::Success(_)));
+        }
+    }
+
+    /// Regression test: a turn with a lane change must produce a clean corner,
+    /// not an S-curve jog. When a Westbound L-1 segment turns Southbound L0,
+    /// the corner point should combine the incoming Y offset with the outgoing
+    /// X offset so both segments stay straight.
+    #[test]
+    fn test_turn_with_lane_change_no_scurve() {
+        // Reproduce the Hub-and-Spoke API→Auth route:
+        //   (2,2) L-1 → (1.5,2) L-1 → (1,2) L0 → (1,2.5) L0 → (1,3)
+        // This goes West at lane -1, turns South at lane 0 at coord (1,2).
+        let route = routing::types::Route {
+            waypoints: vec![
+                routing::types::Waypoint {
+                    coord: routing::types::GridCoord::from_int(2, 2),
+                    lane: -1,
+                },
+                routing::types::Waypoint {
+                    coord: routing::types::GridCoord { col2: 3, row2: 4 }, // (1.5, 2)
+                    lane: -1,
+                },
+                routing::types::Waypoint {
+                    coord: routing::types::GridCoord::from_int(1, 2),
+                    lane: 0,
+                },
+                routing::types::Waypoint {
+                    coord: routing::types::GridCoord { col2: 2, row2: 5 }, // (1, 2.5)
+                    lane: 0,
+                },
+                routing::types::Waypoint {
+                    coord: routing::types::GridCoord::from_int(1, 3),
+                    lane: 0,
+                },
+            ],
+            complexity: routing::types::RouteComplexity {
+                length: 2.0,
+                turns: 1,
+                lane_changes: 0,
+                crossings: 0,
+            },
+        };
+
+        let grid = GridInfo {
+            cols: 3,
+            rows: 3,
+            cell_w: 300.0,
+            cell_h: 200.0,
+            origin_x: 0.0,
+            origin_y: 0.0,
+            occupied: [
+                (0, 0),
+                (1, 0),
+                (2, 0),
+                (0, 1),
+                (1, 1),
+                (2, 1),
+                (0, 2),
+                (1, 2),
+                (2, 2),
+            ]
+            .iter()
+            .cloned()
+            .collect(),
+        };
+        let lane_spacing = 20.0;
+
+        // API at (2,2) → center pixel (450, 300)
+        let from_rect =
+            egui::Rect::from_center_size(Pos2::new(450.0, 300.0), egui::vec2(160.0, 120.0));
+        // Auth at (1,3) → center pixel (150, 500)
+        let to_rect =
+            egui::Rect::from_center_size(Pos2::new(150.0, 500.0), egui::vec2(160.0, 120.0));
+
+        // Derive port offsets the same way the renderer does
+        let exit_dir = coord_direction(route.waypoints[0].coord, route.waypoints[1].coord);
+        let exit_lane = route.waypoints[0].lane;
+        let (elx, ely) = lane_offset(exit_dir, exit_lane, lane_spacing);
+        let exit_face = direction_to_face(exit_dir);
+        let port_start = match exit_face {
+            Face::Left | Face::Right => ely,
+            Face::Top | Face::Bottom => elx,
+        };
+
+        let n = route.waypoints.len();
+        let entry_dir = coord_direction(route.waypoints[n - 2].coord, route.waypoints[n - 1].coord);
+        let entry_lane = route.waypoints[n - 2].lane;
+        let (nlx, nly) = lane_offset(entry_dir, entry_lane, lane_spacing);
+        let entry_face = direction_to_face(entry_dir.opposite());
+        let port_end = match entry_face {
+            Face::Left | Face::Right => nly,
+            Face::Top | Face::Bottom => nlx,
+        };
+
+        let pixels = waypoints_to_pixels(
+            &route,
+            &grid,
+            &from_rect,
+            &to_rect,
+            10.0,
+            lane_spacing,
+            port_start,
+            port_end,
+        );
+
+        // All segments must be orthogonal (no diagonal jogs)
+        for w in pixels.windows(2) {
+            let dx = (w[0].x - w[1].x).abs();
+            let dy = (w[0].y - w[1].y).abs();
+            assert!(
+                dx < 1.5 || dy < 1.5,
+                "Non-orthogonal segment: {:?} → {:?} (dx={dx:.1}, dy={dy:.1})",
+                w[0],
+                w[1]
+            );
+        }
+
+        // The key check: no S-curve at the turn. Find the vertical segments
+        // near the turn column (x ≈ 150, column 1 center). The Y values must
+        // be monotonically decreasing (going up) or increasing (going down) —
+        // never reversing direction.
+        let turn_col_x = 150.0; // center of column 1
+        let vertical_near_turn: Vec<&Pos2> = pixels
+            .iter()
+            .filter(|p| (p.x - turn_col_x).abs() < lane_spacing * 2.0)
+            .collect();
+
+        if vertical_near_turn.len() >= 2 {
+            // Check Y values don't reverse: once they start going down, they
+            // must keep going down (no up-then-down S-curve).
+            let mut prev_y = vertical_near_turn[0].y;
+            let mut direction: Option<bool> = None; // true = going down
+            for pt in &vertical_near_turn[1..] {
+                let dy = pt.y - prev_y;
+                if dy.abs() > 1.0 {
+                    let going_down = dy > 0.0;
+                    if let Some(was_down) = direction {
+                        assert_eq!(
+                            was_down, going_down,
+                            "S-curve detected at turn: Y reversed direction at {:?} \
+                             (vertical points: {:?})",
+                            pt, vertical_near_turn
+                        );
+                    }
+                    direction = Some(going_down);
+                }
+                prev_y = pt.y;
+            }
         }
     }
 

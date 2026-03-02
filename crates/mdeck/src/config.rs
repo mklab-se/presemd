@@ -15,6 +15,49 @@ pub struct Config {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_generation: Option<ImageGenConfig>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routing: Option<RoutingWeightsConfig>,
+}
+
+fn default_one() -> f64 {
+    1.0
+}
+
+/// Configuration for routing cost weights.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoutingWeightsConfig {
+    #[serde(default = "default_one")]
+    pub length: f64,
+    #[serde(default = "default_one")]
+    pub turn: f64,
+    #[serde(default = "default_one")]
+    pub lane_change: f64,
+    #[serde(default = "default_one")]
+    pub crossing: f64,
+}
+
+impl Default for RoutingWeightsConfig {
+    fn default() -> Self {
+        Self {
+            length: 1.0,
+            turn: 1.0,
+            lane_change: 1.0,
+            crossing: 1.0,
+        }
+    }
+}
+
+impl RoutingWeightsConfig {
+    /// Convert to the internal `CostWeights` type.
+    pub fn to_cost_weights(&self) -> crate::render::diagram::routing::types::CostWeights {
+        crate::render::diagram::routing::types::CostWeights {
+            length: self.length,
+            turn: self.turn,
+            lane_change: self.lane_change,
+            crossing: self.crossing,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

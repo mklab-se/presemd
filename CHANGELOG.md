@@ -2,7 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.5.0] - 2026-03-02
+
+### Added
+
+- Live file watching: presentation auto-reloads when the markdown file is saved, with slide position preservation
+- Configurable routing cost weights (`routing.length`, `routing.turn`, `routing.lane_change`, `routing.crossing`) in config
+- Crossing-aware edge routing: A* search now penalizes routes that cross existing edges
+- Crossing detection at junctions and empty cell centers for perpendicular and pass-through segments
+- Turn-conflict detection for lanes adjacent to turning routes
+- 37 new unit tests for crossing avoidance, routing weights, and file watcher
+
+### Changed
+
+- Edge routing engine uses weighted cost function (length + turns + lane changes + crossings) instead of simple path length
 
 ## [0.4.0] - 2026-03-02
 

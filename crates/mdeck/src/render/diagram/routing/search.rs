@@ -5,7 +5,9 @@ use rayon::prelude::*;
 
 use super::graph::RoutingGraph;
 use super::lanes::LaneOccupancy;
-use super::types::{Direction, GridCoord, Lane, Route, RouteComplexity, SegmentId, Waypoint};
+use super::types::{
+    CostWeights, Direction, GridCoord, Lane, Route, RouteComplexity, SegmentId, Waypoint,
+};
 
 /// State key for the visited set — identifies a unique search state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -21,7 +23,7 @@ struct SearchState {
     coord: GridCoord,
     lane: Lane,
     last_direction: Direction,
-    /// Cost so far: length + turns + lane_changes.
+    /// Weighted cost so far.
     g_cost: f64,
     /// Heuristic estimate to target.
     h_cost: f64,
@@ -29,6 +31,7 @@ struct SearchState {
     length_so_far: f64,
     turns_so_far: u32,
     lane_changes_so_far: u32,
+    crossings_so_far: u32,
 }
 
 impl SearchState {
@@ -84,7 +87,7 @@ impl Ord for PqEntry {
             // Prefer lanes closer to center (smaller |lane|).
             .then_with(|| self.lane.abs().cmp(&other.lane.abs()).reverse())
             // Deterministic tie-break for same |lane|: prefer positive lane.
-            .then(other.lane.cmp(&self.lane))
+            .then(self.lane.cmp(&other.lane))
             .then(other.direction.cmp(&self.direction))
     }
 }
@@ -113,6 +116,7 @@ fn astar_single_direction(
     source: GridCoord,
     target: GridCoord,
     initial_dir: Direction,
+    weights: &CostWeights,
 ) -> Option<Route> {
     // The first step: source center → adjacent junction in initial_dir.
     let first_junction = source.step(initial_dir);
@@ -136,7 +140,7 @@ fn astar_single_direction(
     // Seed the open set with states at the first junction.
     for &lane in &first_lanes {
         let h = heuristic(first_junction, target);
-        let g = 0.5; // Length of one step (half unit in grid coords).
+        let g = weights.length * 0.5; // Weighted length of one step.
         let state = SearchState {
             coord: first_junction,
             lane,
@@ -146,6 +150,7 @@ fn astar_single_direction(
             length_so_far: 0.5,
             turns_so_far: 0,
             lane_changes_so_far: 0,
+            crossings_so_far: 0,
         };
         let key = state.key();
         best_g.insert(key, g);
@@ -227,10 +232,18 @@ fn astar_single_direction(
 
             for &next_lane in &available {
                 let lane_changed = next_lane != current.lane;
-                let lane_change_cost = if lane_changed && !is_turn { 1.0 } else { 0.0 };
-                let turn_cost = if is_turn { 1.0 } else { 0.0 };
+                let turn_raw = if is_turn { 1.0 } else { 0.0 };
+                let lane_change_raw = if lane_changed && !is_turn { 1.0 } else { 0.0 };
 
-                let new_g = current.g_cost + step_length + turn_cost + lane_change_cost;
+                // Per-lane crossing detection: includes pass-through crossings
+                // and turn conflicts (lane-dependent).
+                let crossing_count = occupancy.count_crossings(&seg, next_lane, &[source, target]);
+
+                let new_g = current.g_cost
+                    + weights.length * step_length
+                    + weights.turn * turn_raw
+                    + weights.lane_change * lane_change_raw
+                    + weights.crossing * crossing_count as f64;
                 let new_h = heuristic(neighbor, target);
 
                 let new_key = StateKey {
@@ -259,6 +272,7 @@ fn astar_single_direction(
                     turns_so_far: current.turns_so_far + if is_turn { 1 } else { 0 },
                     lane_changes_so_far: current.lane_changes_so_far
                         + if lane_changed && !is_turn { 1 } else { 0 },
+                    crossings_so_far: current.crossings_so_far + crossing_count,
                 };
 
                 open.push(PqEntry {
@@ -331,6 +345,7 @@ fn reconstruct_route(
         length: final_state.length_so_far,
         turns: final_state.turns_so_far,
         lane_changes: final_state.lane_changes_so_far,
+        crossings: final_state.crossings_so_far,
     };
 
     Route {
@@ -347,6 +362,7 @@ pub fn find_best_route(
     occupancy: &LaneOccupancy,
     source: GridCoord,
     target: GridCoord,
+    weights: &CostWeights,
 ) -> Option<Route> {
     // If source == target, return a trivial route.
     if source == target {
@@ -359,6 +375,7 @@ pub fn find_best_route(
                 length: 0.0,
                 turns: 0,
                 lane_changes: 0,
+                crossings: 0,
             },
         });
     }
@@ -366,18 +383,20 @@ pub fn find_best_route(
     // Launch 4 parallel A* searches, one per initial direction.
     let results: Vec<Option<Route>> = Direction::ALL
         .par_iter()
-        .map(|&dir| astar_single_direction(graph, occupancy, source, target, dir))
+        .map(|&dir| astar_single_direction(graph, occupancy, source, target, dir, weights))
         .collect();
 
-    // Collect successful results and pick the best.
+    // Collect successful results and pick the best using weighted comparison.
     let mut best: Option<Route> = None;
     for route in results.into_iter().flatten() {
         best = Some(match best {
             None => route,
             Some(current_best) => {
-                if route.complexity < current_best.complexity {
+                let route_total = route.complexity.total(weights);
+                let best_total = current_best.complexity.total(weights);
+                if route_total < best_total {
                     route
-                } else if route.complexity == current_best.complexity {
+                } else if (route_total - best_total).abs() < f64::EPSILON {
                     // Deterministic tie-break: compare waypoint sequences.
                     if route_tiebreak(&route) < route_tiebreak(&current_best) {
                         route

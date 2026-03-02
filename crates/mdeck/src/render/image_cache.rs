@@ -16,6 +16,11 @@ impl ImageCache {
         }
     }
 
+    /// Clear all cached textures so images reload on next access.
+    pub fn clear(&mut self) {
+        self.textures.get_mut().clear();
+    }
+
     /// Get a texture by image path, loading lazily on first access.
     pub fn get_or_load(&self, ui: &egui::Ui, path: &str) -> Option<egui::TextureHandle> {
         let mut cache = self.textures.borrow_mut();
