@@ -1803,7 +1803,7 @@ fn draw_raw_markdown_overlay(
 }
 
 fn load_app_icon() -> Option<egui::IconData> {
-    let png_bytes = include_bytes!("../../../media/MDeck-logo.png");
+    let png_bytes = include_bytes!("../media/MDeck-logo.png");
     let image = image::load_from_memory(png_bytes).ok()?.into_rgba8();
     let (w, h) = image.dimensions();
     Some(egui::IconData {
