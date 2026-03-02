@@ -1,9 +1,9 @@
 pub mod routing;
 
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::sync::LazyLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Instant;
 
 use crate::render::image_cache::ImageCache;
@@ -12,16 +12,108 @@ use eframe::egui::{self, Color32, FontFamily, FontId, Pos2, Stroke};
 
 // ─── Route cache ────────────────────────────────────────────────────────────
 
-// Thread-local cache for routing results. Routing is expensive (A* search with
-// rayon parallelism per edge) and the inputs rarely change between frames.
-// We cache the output keyed by a hash of (nodes, edges, config).
-thread_local! {
-    static ROUTE_CACHE: RefCell<Option<RouteCacheEntry>> = const { RefCell::new(None) };
+// Global cache for routing results. Routing is expensive (A* search with rayon
+// parallelism per edge) and the inputs rarely change between frames. Using a
+// global Mutex instead of thread_local allows background threads to pre-populate
+// the cache that the render thread later reads.
+static ROUTE_CACHE: LazyLock<Mutex<HashMap<u64, routing::types::RoutingOutput>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Clear all cached routes (call on file reload).
+pub fn clear_route_cache() {
+    ROUTE_CACHE.lock().unwrap().clear();
 }
 
-struct RouteCacheEntry {
-    key: u64,
-    output: routing::types::RoutingOutput,
+/// Pre-compute and cache routes for a diagram so that the first render is fast.
+/// Call this for adjacent slides while the current slide is displayed.
+pub fn precache_diagram_routes(content: &str, max_width: f32, max_height: f32, scale: f32) {
+    let (nodes, edges, _scale_directive) = parse_diagram(content);
+    if nodes.is_empty() || edges.is_empty() {
+        return;
+    }
+
+    let diagram_height = if max_height > 0.0 {
+        max_height
+    } else {
+        500.0 * scale
+    };
+    let padding = 30.0 * scale;
+    let area_width = max_width - padding * 2.0;
+    let area_height = diagram_height - padding * 2.0;
+    let lane_spacing = 20.0 * scale;
+
+    // Use origin (0, 0) — grid cell positions are relative, so the absolute
+    // origin doesn't affect routing node col/row assignments.
+    let (layouts, grid) = layout_nodes(&nodes, area_width, area_height, 0.0, 0.0, scale);
+
+    // Build node rects
+    let mut node_rects: HashMap<String, egui::Rect> = HashMap::new();
+    for (i, node) in nodes.iter().enumerate() {
+        let layout = &layouts[i];
+        let node_rect = egui::Rect::from_center_size(
+            egui::pos2(layout.center_x, layout.center_y),
+            egui::vec2(layout.width, layout.height),
+        );
+        node_rects.insert(node.name.clone(), node_rect);
+    }
+
+    // Build routing input (all edges visible — precache the fully-revealed state)
+    let routing_nodes: Vec<routing::types::DiagramNode> = nodes
+        .iter()
+        .filter_map(|n| {
+            let rect = node_rects.get(&n.name)?;
+            let center = rect.center();
+            let (col, row) = grid.cell_at(center)?;
+            Some(routing::types::DiagramNode {
+                name: n.name.clone(),
+                col: (col + 1) as i32,
+                row: (row + 1) as i32,
+            })
+        })
+        .collect();
+
+    let routing_edges: Vec<routing::types::DiagramEdge> = edges
+        .iter()
+        .filter(|e| {
+            e.from != e.to && node_rects.contains_key(&e.from) && node_rects.contains_key(&e.to)
+        })
+        .map(|edge| routing::types::DiagramEdge {
+            source: edge.from.clone(),
+            target: edge.to.clone(),
+            label: if edge.label.is_empty() {
+                None
+            } else {
+                Some(edge.label.clone())
+            },
+        })
+        .collect();
+
+    let config = routing::types::RoutingConfig {
+        h_lane_capacity: compute_h_capacity(&grid, &node_rects, lane_spacing),
+        v_lane_capacity: compute_v_capacity(&grid, &node_rects, lane_spacing),
+        weights: *ROUTING_WEIGHTS,
+    };
+
+    let cache_key = route_cache_key(&routing_nodes, &routing_edges, &config);
+    let mut cache = ROUTE_CACHE.lock().unwrap();
+    cache
+        .entry(cache_key)
+        .or_insert_with(|| routing::route_all_edges(&routing_nodes, &routing_edges, &config));
+}
+
+/// Pre-compute routes for all diagrams in the presentation on a background thread.
+/// The `cancel` flag is checked before each computation; set it to `true` to abort
+/// early (e.g. on file reload). Routing already uses rayon internally, so a single
+/// background thread is sufficient to saturate cores.
+pub fn precache_all_diagrams_background(diagrams: Vec<String>, cancel: Arc<AtomicBool>) {
+    std::thread::spawn(move || {
+        for content in &diagrams {
+            if cancel.load(Ordering::Relaxed) {
+                return;
+            }
+            precache_diagram_routes(content, 1920.0, 0.0, 1.0);
+        }
+    });
 }
 
 /// Routing weights loaded once from config at startup.
@@ -59,6 +151,17 @@ fn route_cache_key(
 }
 
 // ─── Diagram data structures ─────────────────────────────────────────────────
+
+/// How the diagram should handle overflow / sizing.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum DiagramScale {
+    /// Auto-scale to fit available area (default).
+    Fit,
+    /// Explicit scale factor relative to normal size (e.g. 0.7).
+    Factor(f32),
+    /// Allow scrolling instead of scaling.
+    Scroll,
+}
 
 /// Reveal marker for diagram elements (mirrors ListMarker semantics).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -852,16 +955,30 @@ fn detect_arrow(s: &str) -> Option<(usize, usize, ArrowKind)> {
     None
 }
 
-fn parse_diagram(content: &str) -> (Vec<DiagramNode>, Vec<DiagramEdge>) {
+fn parse_diagram(content: &str) -> (Vec<DiagramNode>, Vec<DiagramEdge>, DiagramScale) {
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
     let mut seen_nodes: HashMap<String, usize> = HashMap::new();
+    let mut diagram_scale = DiagramScale::Fit;
 
     for line in content.lines() {
         let trimmed = line.trim();
 
-        // Skip comment lines
+        // Parse directives from comment lines (e.g. `# scale: fit`)
         if trimmed.starts_with('#') {
+            if let Some(rest) = trimmed
+                .strip_prefix("# scale:")
+                .or_else(|| trimmed.strip_prefix("#scale:"))
+            {
+                let val = rest.trim();
+                if val.eq_ignore_ascii_case("fit") {
+                    diagram_scale = DiagramScale::Fit;
+                } else if val.eq_ignore_ascii_case("scroll") {
+                    diagram_scale = DiagramScale::Scroll;
+                } else if let Ok(f) = val.parse::<f32>() {
+                    diagram_scale = DiagramScale::Factor(f.clamp(0.1, 2.0));
+                }
+            }
             continue;
         }
 
@@ -964,7 +1081,7 @@ fn parse_diagram(content: &str) -> (Vec<DiagramNode>, Vec<DiagramEdge>) {
         }
     }
 
-    (nodes, edges)
+    (nodes, edges, diagram_scale)
 }
 
 // ─── Diagram layout ──────────────────────────────────────────────────────────
@@ -1474,7 +1591,7 @@ fn draw_icon_fallback(
 pub fn diagram_debug_info(content: &str) -> String {
     use std::fmt::Write;
 
-    let (nodes, edges) = parse_diagram(content);
+    let (nodes, edges, _scale_directive) = parse_diagram(content);
     if nodes.is_empty() {
         return "No nodes parsed.".to_string();
     }
@@ -1679,7 +1796,7 @@ pub fn draw_diagram_sized(
     reveal_timestamp: Option<Instant>,
     scale: f32,
 ) -> f32 {
-    let (nodes, edges) = parse_diagram(content);
+    let (nodes, edges, scale_directive) = parse_diagram(content);
 
     // Compute reveal step assignments for each element.
     // Static elements are always visible (step 0). Each `+` increments the step counter.
@@ -1743,7 +1860,7 @@ pub fn draw_diagram_sized(
 
     let abs_origin_x = pos.x + padding;
     let abs_origin_y = pos.y + padding;
-    let (layouts, grid) = layout_nodes(
+    let (mut layouts, mut grid) = layout_nodes(
         &nodes,
         area_width,
         area_height,
@@ -1751,6 +1868,42 @@ pub fn draw_diagram_sized(
         abs_origin_y,
         scale,
     );
+
+    // Scale-to-fit: if the layout overflows the available area, scale down uniformly.
+    // This handles large diagrams (3+ rows) where minimum node sizes cause overflow.
+    let fit_scale = match scale_directive {
+        DiagramScale::Fit => {
+            if area_height > 0.0 {
+                let mut bbox_bottom = 0.0f32;
+                for layout in &layouts {
+                    let bottom = layout.center_y + layout.height / 2.0;
+                    bbox_bottom = bbox_bottom.max(bottom);
+                }
+                if bbox_bottom > area_height {
+                    (area_height / bbox_bottom).clamp(0.3, 1.0)
+                } else {
+                    1.0
+                }
+            } else {
+                1.0
+            }
+        }
+        DiagramScale::Factor(f) => f,
+        DiagramScale::Scroll => 1.0,
+    };
+
+    if (fit_scale - 1.0).abs() > 0.001 {
+        let center_x = area_width / 2.0;
+        let center_y = area_height / 2.0;
+        for layout in &mut layouts {
+            layout.center_x = center_x + (layout.center_x - center_x) * fit_scale;
+            layout.center_y = center_y + (layout.center_y - center_y) * fit_scale;
+            layout.width *= fit_scale;
+            layout.height *= fit_scale;
+        }
+        grid.cell_w *= fit_scale;
+        grid.cell_h *= fit_scale;
+    }
 
     // Build name -> layout index map and compute absolute positions
     let mut node_rects: HashMap<String, egui::Rect> = HashMap::new();
@@ -1931,20 +2084,16 @@ pub fn draw_diagram_sized(
 
     // Use cached routing output — only recompute when inputs change.
     let cache_key = route_cache_key(&routing_nodes, &routing_edges, &config);
-    let routing_output = ROUTE_CACHE.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        if let Some(entry) = cache.as_ref() {
-            if entry.key == cache_key {
-                return entry.output.clone();
-            }
+    let routing_output = {
+        let mut cache = ROUTE_CACHE.lock().unwrap();
+        if let Some(output) = cache.get(&cache_key) {
+            output.clone()
+        } else {
+            let output = routing::route_all_edges(&routing_nodes, &routing_edges, &config);
+            cache.insert(cache_key, output.clone());
+            output
         }
-        let output = routing::route_all_edges(&routing_nodes, &routing_edges, &config);
-        *cache = Some(RouteCacheEntry {
-            key: cache_key,
-            output: output.clone(),
-        });
-        output
-    });
+    };
 
     // Track port usage per (node, face) to spread connections
     let mut port_counts: HashMap<(String, Face), usize> = HashMap::new();
@@ -2103,7 +2252,7 @@ mod diagram_tests {
     #[test]
     fn test_parse_simple_chain() {
         let content = "- A -> B: sends\n- B -> C: forwards";
-        let (nodes, edges) = parse_diagram(content);
+        let (nodes, edges, _) = parse_diagram(content);
         assert_eq!(nodes.len(), 3);
         assert_eq!(edges.len(), 2);
         assert_eq!(edges[0].from, "A");
@@ -2115,7 +2264,7 @@ mod diagram_tests {
     #[test]
     fn test_skip_comments() {
         let content = "# Components\n- A -> B\n# Relationships\n- B -> C";
-        let (nodes, edges) = parse_diagram(content);
+        let (nodes, edges, _) = parse_diagram(content);
         assert_eq!(nodes.len(), 3);
         assert_eq!(edges.len(), 2);
         assert!(!nodes.iter().any(|n| n.name.starts_with('#')));
@@ -2132,7 +2281,7 @@ mod diagram_tests {
     #[test]
     fn test_arrow_types() {
         let content = "A -> B\nC <- D\nE <-> F\nG -- H\nI --> J";
-        let (_, edges) = parse_diagram(content);
+        let (_, edges, _) = parse_diagram(content);
         assert!(matches!(edges[0].arrow, ArrowKind::Forward));
         assert!(matches!(edges[1].arrow, ArrowKind::Reverse));
         assert!(matches!(edges[2].arrow, ArrowKind::Bidirectional));
@@ -2143,7 +2292,7 @@ mod diagram_tests {
     #[test]
     fn test_node_with_label_and_metadata() {
         let content = "- DB: Database (icon: database, pos: 1, 2)";
-        let (nodes, _) = parse_diagram(content);
+        let (nodes, _, _) = parse_diagram(content);
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].name, "DB");
         assert_eq!(nodes[0].label, "Database");
@@ -2179,14 +2328,14 @@ mod diagram_tests {
 
     #[test]
     fn test_empty_diagram() {
-        let (nodes, edges) = parse_diagram("");
+        let (nodes, edges, _) = parse_diagram("");
         assert_eq!(nodes.len(), 0);
         assert_eq!(edges.len(), 0);
     }
 
     #[test]
     fn test_comments_only() {
-        let (nodes, edges) = parse_diagram("# comment\n# another");
+        let (nodes, edges, _) = parse_diagram("# comment\n# another");
         assert_eq!(nodes.len(), 0);
         assert_eq!(edges.len(), 0);
     }
@@ -2194,7 +2343,7 @@ mod diagram_tests {
     #[test]
     fn test_reveal_markers_parsed() {
         let content = "- A (pos: 1, 1)\n+ B (pos: 2, 1)\n* C (pos: 3, 1)";
-        let (nodes, _) = parse_diagram(content);
+        let (nodes, _, _) = parse_diagram(content);
         assert_eq!(nodes[0].reveal, DiagramReveal::Static);
         assert_eq!(nodes[1].reveal, DiagramReveal::NextStep);
         assert_eq!(nodes[2].reveal, DiagramReveal::WithPrev);
@@ -2203,7 +2352,7 @@ mod diagram_tests {
     #[test]
     fn test_reveal_markers_on_edges() {
         let content = "- A -> B\n+ C -> D\n* E -> F";
-        let (_, edges) = parse_diagram(content);
+        let (_, edges, _) = parse_diagram(content);
         assert_eq!(edges[0].reveal, DiagramReveal::Static);
         assert_eq!(edges[1].reveal, DiagramReveal::NextStep);
         assert_eq!(edges[2].reveal, DiagramReveal::WithPrev);
@@ -2224,7 +2373,7 @@ mod diagram_tests {
     #[test]
     fn test_parse_diagram_whitespace() {
         let content = "  A -> B  ";
-        let (nodes, edges) = parse_diagram(content);
+        let (nodes, edges, _) = parse_diagram(content);
         assert_eq!(nodes.len(), 2);
         assert_eq!(edges.len(), 1);
     }
@@ -2232,7 +2381,7 @@ mod diagram_tests {
     #[test]
     fn test_parse_diagram_mixed_definitions() {
         let content = "- Server: Web Server\n- Server -> DB: queries\n- DB: Database";
-        let (nodes, edges) = parse_diagram(content);
+        let (nodes, edges, _) = parse_diagram(content);
         assert_eq!(nodes.len(), 2);
         assert_eq!(nodes[0].label, "Web Server");
         assert_eq!(nodes[1].label, "Database");
@@ -2242,7 +2391,7 @@ mod diagram_tests {
     #[test]
     fn test_parse_diagram_reverse_arrow() {
         let content = "A <- B";
-        let (_, edges) = parse_diagram(content);
+        let (_, edges, _) = parse_diagram(content);
         assert!(matches!(edges[0].arrow, ArrowKind::Reverse));
         assert_eq!(edges[0].from, "A");
         assert_eq!(edges[0].to, "B");
@@ -2251,7 +2400,7 @@ mod diagram_tests {
     #[test]
     fn test_parse_diagram_bidirectional() {
         let content = "A <-> B";
-        let (_, edges) = parse_diagram(content);
+        let (_, edges, _) = parse_diagram(content);
         assert!(matches!(edges[0].arrow, ArrowKind::Bidirectional));
     }
 
@@ -2268,6 +2417,38 @@ mod diagram_tests {
         let (pos, len, kind) = result.unwrap();
         assert!(matches!(kind, ArrowKind::Forward));
         assert_eq!(&"Client -> Server: HTTP"[pos + 1..pos + len - 1], "->");
+    }
+
+    // ── Scale directive tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_scale_directive_default() {
+        let (_, _, scale) = parse_diagram("A -> B");
+        assert_eq!(scale, DiagramScale::Fit);
+    }
+
+    #[test]
+    fn test_scale_directive_fit() {
+        let (_, _, scale) = parse_diagram("# scale: fit\nA -> B");
+        assert_eq!(scale, DiagramScale::Fit);
+    }
+
+    #[test]
+    fn test_scale_directive_scroll() {
+        let (_, _, scale) = parse_diagram("# scale: scroll\nA -> B");
+        assert_eq!(scale, DiagramScale::Scroll);
+    }
+
+    #[test]
+    fn test_scale_directive_factor() {
+        let (_, _, scale) = parse_diagram("# scale: 0.7\nA -> B");
+        assert!(matches!(scale, DiagramScale::Factor(f) if (f - 0.7).abs() < 0.001));
+    }
+
+    #[test]
+    fn test_scale_directive_factor_clamped() {
+        let (_, _, scale) = parse_diagram("# scale: 5.0\nA -> B");
+        assert!(matches!(scale, DiagramScale::Factor(f) if (f - 2.0).abs() < 0.001));
     }
 
     // ── Rendering geometry tests ─────────────────────────────────────────────
