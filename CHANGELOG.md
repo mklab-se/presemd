@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.1] - 2026-03-02
+
+### Removed
+
+- Debug frame profiling that wrote `/tmp/mdeck-profile.log` on every exit
+
 ## [0.7.0] - 2026-03-02
 
 ### Added

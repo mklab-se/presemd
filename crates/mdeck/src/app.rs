@@ -117,8 +117,6 @@ struct PresentationApp {
     grid_scroll_target: f32,
     /// Hash of last loaded file content (to skip spurious watcher events)
     last_content_hash: u64,
-    /// Frame profiling data (last 2000 frames, written to disk on exit)
-    frame_profiles: Vec<FrameProfile>,
     /// Cancel flag for the background diagram route pre-caching thread.
     precache_cancel: Arc<AtomicBool>,
     /// Receives the check report from the background precache thread.
@@ -133,15 +131,6 @@ struct PresentationApp {
     blackout: bool,
     /// Cached texture for the embedded logo (loaded once on first draw).
     end_logo_texture: Option<egui::TextureHandle>,
-}
-
-/// Per-frame timing data for performance profiling.
-struct FrameProfile {
-    slide_index: usize,
-    is_transitioning: bool,
-    transition_from_to: Option<(usize, usize)>,
-    total_ms: f32,
-    render_ms: f32,
 }
 
 struct Toast {
@@ -246,7 +235,6 @@ impl PresentationApp {
             grid_scroll_offset: 0.0,
             grid_scroll_target: 0.0,
             last_content_hash: content_hash,
-            frame_profiles: Vec::with_capacity(2000),
             precache_cancel: Arc::new(AtomicBool::new(false)),
             precache_report_rx: None,
             precache_report_printed: false,
@@ -798,8 +786,6 @@ impl PresentationApp {
 
 impl eframe::App for PresentationApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let frame_start = Instant::now();
-
         self.update_fps();
 
         // Check for file changes
@@ -1085,7 +1071,6 @@ impl eframe::App for PresentationApp {
                     return;
                 }
 
-                let render_start = Instant::now();
                 match self.mode {
                     AppMode::Presentation => {
                         self.draw_presentation_with_scroll(ui, ctx, rect, scale);
@@ -1097,7 +1082,6 @@ impl eframe::App for PresentationApp {
                         self.draw_overview_transition(ui, ctx, rect, scale, selected, entering);
                     }
                 }
-                let render_ms = render_start.elapsed().as_secs_f32() * 1000.0;
 
                 // Toast notification (shown in both modes)
                 if let Some(ref toast) = self.toast {
@@ -1157,20 +1141,6 @@ impl eframe::App for PresentationApp {
                         rect,
                         scale,
                     );
-                }
-
-                // Record frame profile
-                let total_ms = frame_start.elapsed().as_secs_f32() * 1000.0;
-                let is_transitioning = self.transition.is_some();
-                let transition_from_to = self.transition.as_ref().map(|t| (t.from, t.to));
-                if self.frame_profiles.len() < 10_000 {
-                    self.frame_profiles.push(FrameProfile {
-                        slide_index: self.current_slide,
-                        is_transitioning,
-                        transition_from_to,
-                        total_ms,
-                        render_ms,
-                    });
                 }
             });
     }
@@ -2137,56 +2107,6 @@ fn load_app_icon() -> Option<egui::IconData> {
         width: w,
         height: h,
     })
-}
-
-impl Drop for PresentationApp {
-    fn drop(&mut self) {
-        if self.frame_profiles.is_empty() {
-            return;
-        }
-        let path = "/tmp/mdeck-profile.log";
-        let mut out = String::new();
-        out.push_str("# mdeck frame profile\n");
-        out.push_str(&format!(
-            "# {} frames recorded\n",
-            self.frame_profiles.len()
-        ));
-        out.push_str("# frame  slide  transitioning  from->to      total_ms  render_ms\n");
-        for (i, p) in self.frame_profiles.iter().enumerate() {
-            let trans_str = if p.is_transitioning { "yes" } else { "no " };
-            let from_to = match p.transition_from_to {
-                Some((f, t)) => format!("{f:>2}->{t:<2}"),
-                None => "     ".to_string(),
-            };
-            out.push_str(&format!(
-                "{i:>6}  {slide:>5}  {trans_str:>13}  {from_to:>12}  {total:>8.2}  {render:>8.2}\n",
-                slide = p.slide_index,
-                total = p.total_ms,
-                render = p.render_ms,
-            ));
-        }
-
-        // Summary: find slow frames
-        out.push_str("\n# Slow frames (>16ms):\n");
-        for (i, p) in self.frame_profiles.iter().enumerate() {
-            if p.total_ms > 16.0 {
-                let from_to = match p.transition_from_to {
-                    Some((f, t)) => format!("{f}->{t}"),
-                    None => "-".to_string(),
-                };
-                out.push_str(&format!(
-                    "  frame {i}: slide={}, trans={from_to}, total={:.1}ms, render={:.1}ms\n",
-                    p.slide_index, p.total_ms, p.render_ms,
-                ));
-            }
-        }
-
-        if let Err(e) = std::fs::write(path, &out) {
-            eprintln!("Failed to write profile log to {path}: {e}");
-        } else {
-            eprintln!("Profile written to {path}");
-        }
-    }
 }
 
 /// Compute a hash of file content for change detection.
