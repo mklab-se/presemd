@@ -25,10 +25,6 @@ struct SearchState {
     g_cost: f64,
     /// Heuristic estimate to target.
     h_cost: f64,
-    /// Parent state key for path reconstruction.
-    parent: Option<StateKey>,
-    /// How we got here: the lane of the parent's segment.
-    parent_lane: Lane,
     /// Breakdown of cost components for final route complexity.
     length_so_far: f64,
     turns_so_far: u32,
@@ -147,8 +143,6 @@ fn astar_single_direction(
             last_direction: initial_dir,
             g_cost: g,
             h_cost: h,
-            parent: None,
-            parent_lane: lane,
             length_so_far: 0.5,
             turns_so_far: 0,
             lane_changes_so_far: 0,
@@ -261,8 +255,6 @@ fn astar_single_direction(
                     last_direction: dir,
                     g_cost: new_g,
                     h_cost: new_h,
-                    parent: Some(current_key),
-                    parent_lane: current.lane,
                     length_so_far: current.length_so_far + step_length,
                     turns_so_far: current.turns_so_far + if is_turn { 1 } else { 0 },
                     lane_changes_so_far: current.lane_changes_so_far

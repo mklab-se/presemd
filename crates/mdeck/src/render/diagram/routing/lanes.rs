@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use super::types::{Lane, Route, SegmentId, Waypoint};
+#[cfg(test)]
+use super::types::Waypoint;
+use super::types::{Lane, Route, SegmentId};
 
 /// Tracks which lanes are claimed on each segment.
 #[derive(Debug, Clone, Default)]
@@ -37,8 +39,7 @@ impl LaneOccupancy {
     }
 
     /// Find the first available lane on a segment, spiraling from center.
-    /// Returns lane numbers in order: 0, 1, -1, 2, -2, 3, -3, ...
-    /// `capacity` limits how many lanes are available total.
+    #[cfg(test)]
     pub fn first_available(&self, seg: &SegmentId, capacity: i32) -> Option<Lane> {
         spiral_lanes(capacity)
             .into_iter()
@@ -54,17 +55,19 @@ impl LaneOccupancy {
     }
 
     /// Get the set of claimed lanes on a segment.
+    #[cfg(test)]
     pub fn claimed_lanes(&self, seg: &SegmentId) -> Option<&HashSet<Lane>> {
         self.claimed.get(seg)
     }
 
     /// Count how many lanes are claimed on a segment.
+    #[cfg(test)]
     pub fn claimed_count(&self, seg: &SegmentId) -> usize {
         self.claimed.get(seg).map_or(0, |s| s.len())
     }
 
-    /// Build a route from waypoint coordinates and this occupancy's state.
-    /// Used internally — callers typically use `claim_route` after finding a route.
+    /// Build a route from waypoint coordinates.
+    #[cfg(test)]
     pub fn build_route_from_waypoints(waypoints: Vec<Waypoint>) -> Route {
         let complexity = compute_complexity(&waypoints);
         Route {
@@ -94,6 +97,7 @@ fn spiral_lanes(capacity: i32) -> Vec<Lane> {
 }
 
 /// Compute the complexity of a route from its waypoints.
+#[cfg(test)]
 pub fn compute_complexity(waypoints: &[Waypoint]) -> super::types::RouteComplexity {
     let mut length = 0.0_f64;
     let mut turns = 0_u32;
@@ -134,6 +138,7 @@ pub fn compute_complexity(waypoints: &[Waypoint]) -> super::types::RouteComplexi
 }
 
 /// Determine the direction of travel from `a` to `b`.
+#[cfg(test)]
 fn segment_direction(
     a: super::types::GridCoord,
     b: super::types::GridCoord,

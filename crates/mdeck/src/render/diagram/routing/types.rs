@@ -14,6 +14,7 @@ pub struct GridCoord {
 impl GridCoord {
     /// Create from actual grid coordinates (col, row) which may be half-integers.
     /// E.g., `from_grid(1.5, 2.0)` → `GridCoord { col2: 3, row2: 4 }`.
+    #[cfg(test)]
     pub fn from_grid(col: f64, row: f64) -> Self {
         Self {
             col2: (col * 2.0).round() as i32,
@@ -72,11 +73,13 @@ impl GridCoord {
     }
 
     /// Whether this is a street intersection (both col2 and row2 are odd).
+    #[cfg(test)]
     pub fn is_street_intersection(self) -> bool {
         self.col2 % 2 != 0 && self.row2 % 2 != 0
     }
 
     /// Whether this is a junction (one of col2/row2 is odd, the other is even).
+    #[cfg(test)]
     pub fn is_junction(self) -> bool {
         (self.col2 % 2 != 0) != (self.row2 % 2 != 0)
     }
@@ -140,6 +143,7 @@ impl Direction {
     }
 
     /// Whether this direction is vertical (North/South).
+    #[cfg(test)]
     pub fn is_vertical(self) -> bool {
         !self.is_horizontal()
     }
@@ -184,6 +188,7 @@ impl SegmentId {
     }
 
     /// Whether this segment is vertical.
+    #[cfg(test)]
     pub fn is_vertical(&self) -> bool {
         self.from.col2 == self.to.col2
     }
@@ -263,6 +268,7 @@ pub struct DiagramNode {
 pub struct DiagramEdge {
     pub source: String,
     pub target: String,
+    #[allow(dead_code)]
     pub label: Option<String>,
 }
 

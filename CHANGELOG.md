@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-02
+
 ### Added
 
 - Diagram rendering overhaul: proper grid layout, auto-layout, much larger nodes
@@ -13,17 +15,25 @@ All notable changes to this project will be documented in this file.
 - Icon images loaded from `media/diagram-icons/{name}.png` when available
 - OpenAI DALL-E 3 and Google Gemini Imagen API support for icon generation
 - `image_generation` config section for API provider and key
-- Edge rendering with straight lines, nearest-face connection points, and proper arrowheads
+- Orthogonal edge routing engine with A* pathfinding and lane allocation
+- Edge rendering with rounded corners, proper arrowheads, and lane-aligned connections
 - Dashed lines for `--` and `-->` arrow types
 - Edge label pills with semi-transparent backgrounds
-- Parallel edge offset when multiple edges connect the same node pair
-- 8 unit tests for diagram parsing
-- 4 unit tests for icon collection
+- Diagram debug overlay (press R) showing routing details
+- Gallery layout for image-heavy slides
+- 244 unit tests covering parsing, routing, and rendering
 
 ### Changed
 
 - Diagram nodes now render as rounded rectangles with icon + label (was: tiny pills in a single row)
 - Diagram layout uses grid positioning or auto-layout (was: single horizontal row)
+
+### Fixed
+
+- Arrow port offsets now derived from lane assignments, eliminating diagonal "lane-switching" segments
+- Entry face computation corrected with `.opposite()` to match routing direction
+- Edge labels moved to 20% along polyline to prevent overlap on opposing edges (A->B and B->A)
+- Debug overlay route format now shows lane labels between coordinates per routing spec
 
 ## [0.3.0] - 2026-02-28
 

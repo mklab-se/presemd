@@ -55,6 +55,13 @@ enum ActiveDraw {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+enum RawOverlaySide {
+    Off,
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum AppMode {
     Presentation,
     Grid { selected: usize },
@@ -72,7 +79,7 @@ struct PresentationApp {
     transition: Option<ActiveTransition>,
     image_cache: ImageCache,
     show_hud: bool,
-    show_raw_markdown: bool,
+    raw_overlay_side: RawOverlaySide,
     toast: Option<Toast>,
     last_ctrl_c: Option<Instant>,
     last_esc: Option<Instant>,
@@ -172,7 +179,7 @@ impl PresentationApp {
             transition: None,
             image_cache,
             show_hud: false,
-            show_raw_markdown: false,
+            raw_overlay_side: RawOverlaySide::Off,
             toast: None,
             last_ctrl_c: None,
             last_esc: None,
@@ -621,9 +628,13 @@ impl eframe::App for PresentationApp {
                     if i.key_pressed(egui::Key::H) {
                         self.show_hud = !self.show_hud;
                     }
-                    // Toggle raw markdown overlay: R
+                    // Cycle debug overlay: R (Off → Left → Right → Off)
                     if i.key_pressed(egui::Key::R) {
-                        self.show_raw_markdown = !self.show_raw_markdown;
+                        self.raw_overlay_side = match self.raw_overlay_side {
+                            RawOverlaySide::Off => RawOverlaySide::Left,
+                            RawOverlaySide::Left => RawOverlaySide::Right,
+                            RawOverlaySide::Right => RawOverlaySide::Off,
+                        };
                     }
                     // Scroll: Up/Down (animate toward target)
                     if i.key_pressed(egui::Key::ArrowUp) {
@@ -813,10 +824,28 @@ impl eframe::App for PresentationApp {
                     draw_hud(ui, &self.theme, rect, scale);
                 }
 
-                // Raw markdown overlay (presentation mode only)
-                if self.show_raw_markdown && matches!(self.mode, AppMode::Presentation) {
-                    let raw = &self.presentation.slides[self.current_slide].raw_source;
-                    draw_raw_markdown_overlay(ui, raw, &self.theme, rect, scale);
+                // Debug overlay (presentation mode only)
+                if self.raw_overlay_side != RawOverlaySide::Off
+                    && matches!(self.mode, AppMode::Presentation)
+                {
+                    let slide = &self.presentation.slides[self.current_slide];
+                    let raw = &slide.raw_source;
+                    let debug_info = slide.blocks.iter().find_map(|b| {
+                        if let parser::Block::Diagram { content } = b {
+                            Some(render::diagram::diagram_debug_info(content))
+                        } else {
+                            None
+                        }
+                    });
+                    draw_raw_markdown_overlay(
+                        ui,
+                        raw,
+                        debug_info.as_deref(),
+                        self.raw_overlay_side,
+                        &self.theme,
+                        rect,
+                        scale,
+                    );
                 }
             });
     }
@@ -1619,7 +1648,7 @@ fn draw_hud(ui: &egui::Ui, theme: &Theme, rect: egui::Rect, scale: f32) {
         ("D", "Toggle theme"),
         ("F", "Toggle fullscreen"),
         ("H", "Toggle this HUD"),
-        ("R", "Toggle raw markdown"),
+        ("R", "Debug overlay (L/R/off)"),
         ("Q", "Quit"),
         ("Home", "First slide"),
         ("End", "Last slide"),
@@ -1679,34 +1708,50 @@ fn draw_hud(ui: &egui::Ui, theme: &Theme, rect: egui::Rect, scale: f32) {
 fn draw_raw_markdown_overlay(
     ui: &egui::Ui,
     raw: &str,
+    debug_info: Option<&str>,
+    side: RawOverlaySide,
     theme: &Theme,
     rect: egui::Rect,
     scale: f32,
 ) {
-    let bg = Theme::with_opacity(theme.code_background, 0.92);
+    let bg = Theme::with_opacity(theme.code_background, 0.78);
     let text_color = Theme::with_opacity(theme.code_foreground, 0.95);
     let title_color = Theme::with_opacity(theme.heading_color, 0.9);
 
-    let padding = 32.0 * scale;
-    let margin = 48.0 * scale;
+    let padding = 20.0 * scale;
+    let panel_width = rect.width() * 0.25;
 
-    let overlay_rect = rect.shrink(margin);
-    ui.painter().rect_filled(overlay_rect, 12.0 * scale, bg);
+    let overlay_rect = match side {
+        RawOverlaySide::Left => {
+            egui::Rect::from_min_size(rect.left_top(), egui::vec2(panel_width, rect.height()))
+        }
+        RawOverlaySide::Right => egui::Rect::from_min_size(
+            egui::pos2(rect.right() - panel_width, rect.top()),
+            egui::vec2(panel_width, rect.height()),
+        ),
+        RawOverlaySide::Off => return,
+    };
+    ui.painter().rect_filled(overlay_rect, 0.0, bg);
 
     // Title
     let title_galley = ui.painter().layout_no_wrap(
         "Raw Markdown".to_string(),
-        egui::FontId::proportional(20.0 * scale),
+        egui::FontId::proportional(16.0 * scale),
         title_color,
     );
     let title_pos = egui::pos2(overlay_rect.left() + padding, overlay_rect.top() + padding);
     ui.painter().galley(title_pos, title_galley, title_color);
 
-    // Dismiss hint
+    // Hint text
     let hint_color = Theme::with_opacity(theme.foreground, 0.5);
+    let hint_text = match side {
+        RawOverlaySide::Left => "R: move right | RR: close",
+        RawOverlaySide::Right => "R: close",
+        RawOverlaySide::Off => "",
+    };
     let hint_galley = ui.painter().layout_no_wrap(
-        "Press R to close".to_string(),
-        egui::FontId::proportional(14.0 * scale),
+        hint_text.to_string(),
+        egui::FontId::proportional(11.0 * scale),
         hint_color,
     );
     let hint_pos = egui::pos2(
@@ -1716,15 +1761,45 @@ fn draw_raw_markdown_overlay(
     ui.painter().galley(hint_pos, hint_galley, hint_color);
 
     // Markdown content in monospace font
-    let text_top = overlay_rect.top() + padding + 36.0 * scale;
+    let text_top = overlay_rect.top() + padding + 28.0 * scale;
     let text_width = overlay_rect.width() - padding * 2.0;
-    let font = egui::FontId::monospace(14.0 * scale);
+    let font = egui::FontId::monospace(11.0 * scale);
 
     let galley = ui
         .painter()
-        .layout(raw.to_string(), font, text_color, text_width);
+        .layout(raw.to_string(), font.clone(), text_color, text_width);
     let text_pos = egui::pos2(overlay_rect.left() + padding, text_top);
+    let raw_bottom = text_pos.y + galley.rect.height();
     ui.painter().galley(text_pos, galley, text_color);
+
+    // Debug section (if diagram info is available)
+    if let Some(info) = debug_info {
+        let sep_y = raw_bottom + 12.0 * scale;
+        let sep_color = Theme::with_opacity(theme.foreground, 0.3);
+        ui.painter().line_segment(
+            [
+                egui::pos2(overlay_rect.left() + padding, sep_y),
+                egui::pos2(overlay_rect.right() - padding, sep_y),
+            ],
+            egui::Stroke::new(1.0 * scale, sep_color),
+        );
+
+        let debug_title_pos = egui::pos2(overlay_rect.left() + padding, sep_y + 8.0 * scale);
+        let debug_title = ui.painter().layout_no_wrap(
+            "Routing Debug".to_string(),
+            egui::FontId::proportional(14.0 * scale),
+            title_color,
+        );
+        let debug_content_top = debug_title_pos.y + debug_title.rect.height() + 6.0 * scale;
+        ui.painter()
+            .galley(debug_title_pos, debug_title, title_color);
+
+        let debug_galley = ui
+            .painter()
+            .layout(info.to_string(), font, text_color, text_width);
+        let debug_pos = egui::pos2(overlay_rect.left() + padding, debug_content_top);
+        ui.painter().galley(debug_pos, debug_galley, text_color);
+    }
 }
 
 fn load_app_icon() -> Option<egui::IconData> {

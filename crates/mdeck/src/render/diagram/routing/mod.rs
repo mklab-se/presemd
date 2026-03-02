@@ -1,6 +1,7 @@
 pub mod graph;
 pub mod lanes;
 pub mod search;
+#[cfg(test)]
 pub mod serialize;
 pub mod types;
 
