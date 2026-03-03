@@ -4,6 +4,7 @@ mod check;
 mod cli;
 mod commands;
 mod config;
+mod incident_log;
 mod parser;
 mod render;
 mod theme;

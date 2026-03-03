@@ -1,7 +1,7 @@
 use eframe::egui;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::Instant;
 
@@ -9,6 +9,7 @@ use notify_debouncer_mini::{DebouncedEventKind, Debouncer, new_debouncer, notify
 
 use crate::check::CheckReport;
 use crate::config::Config;
+use crate::incident_log::IncidentLog;
 use crate::parser::{self, Presentation};
 use crate::render;
 use crate::render::image_cache::ImageCache;
@@ -131,6 +132,10 @@ struct PresentationApp {
     blackout: bool,
     /// Cached texture for the embedded logo (loaded once on first draw).
     end_logo_texture: Option<egui::TextureHandle>,
+    /// Shared slide position for recovery after display errors.
+    shared_slide: Option<Arc<AtomicUsize>>,
+    /// Incident log for recording recovered and fatal errors.
+    incident_log: Arc<IncidentLog>,
 }
 
 struct Toast {
@@ -165,6 +170,7 @@ impl Toast {
 }
 
 impl PresentationApp {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         file: PathBuf,
         presentation: Presentation,
@@ -173,6 +179,7 @@ impl PresentationApp {
         watcher: Debouncer<notify::RecommendedWatcher>,
         content_hash: u64,
         quiet: bool,
+        incident_log: Arc<IncidentLog>,
     ) -> Self {
         let _ = windowed; // used at window creation time
 
@@ -242,6 +249,8 @@ impl PresentationApp {
             on_end_slide: false,
             blackout: false,
             end_logo_texture: None,
+            shared_slide: None,
+            incident_log,
         }
     }
 
@@ -379,6 +388,11 @@ impl PresentationApp {
         let content = match std::fs::read_to_string(&self.file_path) {
             Ok(c) => c,
             Err(e) => {
+                self.incident_log.record(
+                    "file_reload_error",
+                    "failed to read presentation file for reload",
+                    &format!("{e}\npath: {}", self.file_path.display()),
+                );
                 self.toast = Some(Toast::new(format!("Reload error: {e}")));
                 return;
             }
@@ -788,6 +802,11 @@ impl eframe::App for PresentationApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.update_fps();
 
+        // Publish current slide position for recovery after display errors
+        if let Some(shared) = &self.shared_slide {
+            shared.store(self.current_slide, Ordering::Relaxed);
+        }
+
         // Check for file changes
         if self.watcher_rx.try_recv().is_ok() {
             // Drain any extra queued events
@@ -1143,6 +1162,11 @@ impl eframe::App for PresentationApp {
                     );
                 }
             });
+
+        // Keep the display pipeline alive with periodic repaints. Without this,
+        // eframe enters ControlFlow::Wait when idle, and on Linux the EGL/GLX
+        // context can become stale after ~30 s, crashing with EINVAL (os error 22).
+        ctx.request_repaint_after(std::time::Duration::from_secs(4));
     }
 }
 
@@ -2136,15 +2160,25 @@ fn find_matching_slide(
 fn spawn_file_watcher(
     path: &std::path::Path,
     ctx: egui::Context,
+    incident_log: Arc<IncidentLog>,
 ) -> anyhow::Result<(mpsc::Receiver<()>, Debouncer<notify::RecommendedWatcher>)> {
     let (tx, rx) = mpsc::channel();
     let mut debouncer = new_debouncer(
         std::time::Duration::from_millis(500),
         move |events: Result<Vec<notify_debouncer_mini::DebouncedEvent>, notify::Error>| {
-            if let Ok(events) = events {
-                if events.iter().any(|e| e.kind == DebouncedEventKind::Any) {
-                    let _ = tx.send(());
-                    ctx.request_repaint();
+            match events {
+                Ok(events) => {
+                    if events.iter().any(|e| e.kind == DebouncedEventKind::Any) {
+                        let _ = tx.send(());
+                        ctx.request_repaint();
+                    }
+                }
+                Err(e) => {
+                    incident_log.record(
+                        "file_watcher_error",
+                        "file watcher reported an error",
+                        &format!("{e}"),
+                    );
                 }
             }
         },
@@ -2163,39 +2197,21 @@ pub fn run(
     quiet: bool,
 ) -> anyhow::Result<()> {
     let file = file.canonicalize().unwrap_or(file);
-    let content = std::fs::read_to_string(&file)?;
-    let base_path = file.parent().unwrap_or(std::path::Path::new("."));
-    let presentation = parser::parse(&content, base_path);
-
-    if presentation.slides.is_empty() {
-        anyhow::bail!("No slides found in {}", file.display());
-    }
-
-    let title = presentation.meta.title.clone().unwrap_or_else(|| {
-        format!(
-            "mdeck \u{2014} {}",
-            file.file_name().unwrap_or_default().to_string_lossy()
-        )
-    });
-
-    let slide_count = presentation.slides.len();
 
     // Determine start mode: CLI flags override config
     let config = Config::load_or_default();
     let config_start = config
         .defaults
         .as_ref()
-        .and_then(|d| d.start_mode.as_deref());
+        .and_then(|d| d.start_mode.as_deref())
+        .map(String::from);
 
-    let (initial_slide, initial_overview) = if start_overview {
-        // --overview flag: start in grid at current slide
+    let (cli_initial_slide, cli_initial_overview) = if start_overview {
         (start_slide.map(|s| s.saturating_sub(1)).unwrap_or(0), true)
     } else if let Some(s) = start_slide {
-        // --slide N flag: start on that slide (1-indexed)
         (s.saturating_sub(1), false)
     } else {
-        // Fall back to config
-        match config_start {
+        match config_start.as_deref() {
             Some("overview") => (0, true),
             Some("first") | None => (0, false),
             Some(n) => {
@@ -2208,55 +2224,143 @@ pub fn run(
         }
     };
 
-    let initial_slide = initial_slide.min(slide_count.saturating_sub(1));
+    let icon = load_app_icon().map(std::sync::Arc::new);
 
-    let viewport = if windowed {
-        egui::ViewportBuilder::default()
-            .with_inner_size([1280.0, 720.0])
-            .with_title(&title)
-    } else {
-        egui::ViewportBuilder::default()
-            .with_fullscreen(true)
-            .with_title(&title)
-    };
+    // Shared slide position survives display errors so we can resume
+    let shared_slide = Arc::new(AtomicUsize::new(cli_initial_slide));
 
-    let viewport = if let Some(icon) = load_app_icon() {
-        viewport.with_icon(std::sync::Arc::new(icon))
-    } else {
-        viewport
-    };
+    let incident_log = Arc::new(IncidentLog::new(&file.display().to_string()));
 
-    let options = eframe::NativeOptions {
-        viewport,
-        ..Default::default()
-    };
+    const MAX_RETRIES: usize = 5;
+    for attempt in 0..=MAX_RETRIES {
+        let content = std::fs::read_to_string(&file)?;
+        let base_path = file.parent().unwrap_or(std::path::Path::new("."));
+        let presentation = parser::parse(&content, base_path);
 
-    eframe::run_native(
-        &title,
-        options,
-        Box::new(move |cc| {
-            let content_hash = hash_content(&content);
-            let (watcher_rx, watcher) = spawn_file_watcher(&file, cc.egui_ctx.clone())?;
-            let mut app = PresentationApp::new(
-                file,
-                presentation,
-                windowed,
-                watcher_rx,
-                watcher,
-                content_hash,
-                quiet,
-            );
-            app.current_slide = initial_slide;
-            if initial_overview {
-                app.mode = AppMode::Grid {
-                    selected: initial_slide,
-                };
+        if presentation.slides.is_empty() {
+            anyhow::bail!("No slides found in {}", file.display());
+        }
+
+        let title = presentation.meta.title.clone().unwrap_or_else(|| {
+            format!(
+                "mdeck \u{2014} {}",
+                file.file_name().unwrap_or_default().to_string_lossy()
+            )
+        });
+
+        let slide_count = presentation.slides.len();
+
+        // On first attempt use CLI args; on retry resume from last known slide
+        let (initial_slide, initial_overview) = if attempt == 0 {
+            (
+                cli_initial_slide.min(slide_count.saturating_sub(1)),
+                cli_initial_overview,
+            )
+        } else {
+            (
+                shared_slide
+                    .load(Ordering::Relaxed)
+                    .min(slide_count.saturating_sub(1)),
+                false,
+            )
+        };
+
+        let viewport = if windowed {
+            egui::ViewportBuilder::default()
+                .with_inner_size([1280.0, 720.0])
+                .with_title(&title)
+        } else {
+            egui::ViewportBuilder::default()
+                .with_fullscreen(true)
+                .with_title(&title)
+        };
+
+        let viewport = if let Some(ref icon) = icon {
+            viewport.with_icon(icon.clone())
+        } else {
+            viewport
+        };
+
+        let options = eframe::NativeOptions {
+            viewport,
+            ..Default::default()
+        };
+
+        let shared = shared_slide.clone();
+        let file_clone = file.clone();
+        let log_clone = incident_log.clone();
+        let result = eframe::run_native(
+            &title,
+            options,
+            Box::new(move |cc| {
+                let content_hash = hash_content(&content);
+                let (watcher_rx, watcher) =
+                    spawn_file_watcher(&file_clone, cc.egui_ctx.clone(), log_clone.clone())?;
+                let mut app = PresentationApp::new(
+                    file_clone,
+                    presentation,
+                    windowed,
+                    watcher_rx,
+                    watcher,
+                    content_hash,
+                    quiet,
+                    log_clone,
+                );
+                app.current_slide = initial_slide;
+                app.shared_slide = Some(shared);
+                if initial_overview {
+                    app.mode = AppMode::Grid {
+                        selected: initial_slide,
+                    };
+                }
+                app.spawn_diagram_precache();
+                Ok(Box::new(app))
+            }),
+        );
+
+        match result {
+            Ok(()) => {
+                print_incident_summary(&incident_log);
+                return Ok(());
             }
-            app.spawn_diagram_precache();
-            Ok(Box::new(app))
-        }),
-    )
-    .map_err(|e| anyhow::anyhow!("{e}"))
+            Err(e) if attempt < MAX_RETRIES => {
+                let slide = shared_slide.load(Ordering::Relaxed);
+                let summary = format!(
+                    "eframe display error, restarting (attempt {}/{})",
+                    attempt + 1,
+                    MAX_RETRIES,
+                );
+                incident_log.record("display_error", &summary, &format!("{e}\nslide: {slide}"));
+                eprintln!(
+                    "Display error: {e}. Restarting presentation (attempt {}/{MAX_RETRIES})...",
+                    attempt + 1,
+                );
+                continue;
+            }
+            Err(e) => {
+                let slide = shared_slide.load(Ordering::Relaxed);
+                incident_log.record(
+                    "display_error_fatal",
+                    "all display error retries exhausted",
+                    &format!("{e}\nslide: {slide}"),
+                );
+                print_incident_summary(&incident_log);
+                return Err(anyhow::anyhow!("{e}"));
+            }
+        }
+    }
+
+    print_incident_summary(&incident_log);
+    Ok(())
+}
+
+fn print_incident_summary(log: &IncidentLog) {
+    if let Some((path, count)) = log.summary() {
+        eprintln!(
+            "{count} issue(s) encountered during this session. Details: {}",
+            path.display(),
+        );
+    }
 }
 
 #[cfg(test)]

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - 2026-03-03
+
+### Added
+
+- **Incident logging:** Lightweight `IncidentLog` module records all recovered and fatal errors (display errors, file watcher errors, reload failures) to `~/.config/mdeck/logs/incident-YYYY-MM-DD-HHMMSS.log` for diagnostics
+- Log files are created lazily — no file is written during normal operation
+- At session end, if any incidents occurred, the log file path is printed to stderr
+- Log header includes version, presentation file, OS/arch, and display-related environment variables (DISPLAY, WAYLAND_DISPLAY, XDG_SESSION_TYPE) for Linux debugging
+- File watcher errors are now logged (previously silently ignored)
+- File reload errors are now logged in addition to the existing toast notification
+
 ## [0.7.1] - 2026-03-02
 
 ### Removed
