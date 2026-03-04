@@ -97,7 +97,13 @@ fn write_header(f: &mut std::fs::File, presentation_file: &str) -> std::io::Resu
     writeln!(f, "os: {} {}", std::env::consts::OS, std::env::consts::ARCH)?;
 
     // Include display-related env vars when present (useful for Linux diagnostics)
-    for var in ["DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE"] {
+    for var in [
+        "DISPLAY",
+        "WAYLAND_DISPLAY",
+        "XDG_SESSION_TYPE",
+        "XDG_CURRENT_DESKTOP",
+        "DESKTOP_SESSION",
+    ] {
         if let Ok(val) = std::env::var(var) {
             writeln!(f, "env.{var}: {val}")?;
         }

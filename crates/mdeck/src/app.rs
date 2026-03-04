@@ -136,6 +136,8 @@ struct PresentationApp {
     shared_slide: Option<Arc<AtomicUsize>>,
     /// Incident log for recording recovered and fatal errors.
     incident_log: Arc<IncidentLog>,
+    /// Timestamp of the previous frame, used to detect power-state time jumps.
+    last_frame: Instant,
 }
 
 struct Toast {
@@ -251,6 +253,7 @@ impl PresentationApp {
             end_logo_texture: None,
             shared_slide: None,
             incident_log,
+            last_frame: now,
         }
     }
 
@@ -802,6 +805,40 @@ impl eframe::App for PresentationApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.update_fps();
 
+        // Detect power-state time jumps and shift animation timestamps forward
+        let now = Instant::now();
+        let frame_delta = now.duration_since(self.last_frame);
+        self.last_frame = now;
+        if frame_delta.as_millis() > 200 {
+            let jump = frame_delta;
+            self.incident_log.record(
+                "time_jump",
+                &format!("frame delta {}ms", jump.as_millis()),
+                "Power-state or scheduling gap detected; shifting animation timestamps",
+            );
+
+            // Shift all in-flight animation timestamps forward by the jump amount
+            // so they resume smoothly instead of snapping to completion.
+            if let Some(ref mut t) = self.transition {
+                t.start = (t.start + jump).min(now);
+            }
+            if let Some(ref mut t) = self.overview_transition_start {
+                *t = (*t + jump).min(now);
+            }
+            for stroke in &mut self.pen_strokes {
+                stroke.start = (stroke.start + jump).min(now);
+            }
+            for arrow in &mut self.arrows {
+                arrow.start = (arrow.start + jump).min(now);
+            }
+            if let Some(ref mut t) = self.toast {
+                t.start = (t.start + jump).min(now);
+            }
+            for t in self.reveal_timestamps.iter_mut().flatten() {
+                *t = (*t + jump).min(now);
+            }
+        }
+
         // Publish current slide position for recovery after display errors
         if let Some(shared) = &self.shared_slide {
             shared.store(self.current_slide, Ordering::Relaxed);
@@ -1166,6 +1203,11 @@ impl eframe::App for PresentationApp {
         // Keep the display pipeline alive with periodic repaints. Without this,
         // eframe enters ControlFlow::Wait when idle, and on Linux the EGL/GLX
         // context can become stale after ~30 s, crashing with EINVAL (os error 22).
+        // On Linux we repaint more aggressively (500ms) to prevent power-state idle
+        // from disrupting GPU context during battery/screen-share scenarios.
+        #[cfg(target_os = "linux")]
+        ctx.request_repaint_after(std::time::Duration::from_millis(500));
+        #[cfg(not(target_os = "linux"))]
         ctx.request_repaint_after(std::time::Duration::from_secs(4));
     }
 }
