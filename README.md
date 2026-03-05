@@ -54,8 +54,9 @@ mdeck --version      # Show version
 ### Commands
 
 ```bash
-mdeck ai init                          # Set up AI provider (interactive)
-mdeck ai status                        # Show AI configuration
+mdeck ai                               # Show AI status
+mdeck ai test                          # Test AI integration
+mdeck ai config                        # Open AI config in editor
 mdeck config show                      # Display current settings
 mdeck config set defaults.theme dark   # Set a config value
 mdeck completion zsh                   # Generate shell completions

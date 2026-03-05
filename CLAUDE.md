@@ -37,7 +37,6 @@ crates/
         completion.rs # Shell completion generation
         config.rs    # Config show/set
         export.rs    # PNG export via headless eframe rendering
-        generate_icons.rs # AI icon generation for diagrams
         spec.rs      # Format specification printer
       parser/          # Markdown-to-slide parser (frontmatter, blocks, inlines, splitter)
       render/          # Slide rendering engine
@@ -61,14 +60,15 @@ crates/
 ```bash
 mdeck <file.md>              # Launch presentation
 mdeck <file.md> --check      # Validate presentation (exit code 1 if warnings)
-mdeck ai init                # Set up AI provider (interactive)
-mdeck ai status              # Show AI config
-mdeck ai remove              # Remove AI config
+mdeck ai                     # Show AI status (chat + image)
+mdeck ai test                # Test AI integration
+mdeck ai enable              # Enable AI features
+mdeck ai disable             # Disable AI features
+mdeck ai config              # Open AI config in editor
 mdeck config show            # Display configuration
 mdeck config set <key> <val> # Set config value (defaults.theme, defaults.transition, defaults.aspect)
 mdeck export <file.md>       # Export slides as PNG images (1920x1080 default)
 mdeck export <file.md> --width 3840 --height 2160  # Export at custom resolution
-mdeck generate-icons <file.md> # Generate AI diagram icons (requires image_generation config)
 mdeck completion <shell>     # Generate shell completions (bash, zsh, fish, powershell)
 mdeck spec                   # Print format specification
 mdeck spec --short           # Print quick reference card
@@ -92,7 +92,7 @@ mdeck --help                 # Show help
 - **Keyboard:** Space/N/Right forward, P/Left back, Up/Down scroll, G grid, T transition, D theme, F fullscreen, H HUD, `.` blackout, Esc×2 exit
 - **End slide:** Virtual "The End" slide with MDeck logo shown when navigating past the last slide
 - **Diagrams:** Grid layout (when `pos:` specified) or auto-layout; geometric fallback icons; AI-generated icon images from `media/diagram-icons/`; 5 arrow types (`->`, `<-`, `<->`, `--`, `-->`)
-- **AI icon generation:** `ureq` for HTTP, OpenAI DALL-E 3 and Google Gemini Imagen APIs; icons saved to `media/diagram-icons/{name}.png`
+- **AI integration:** `ailloy` crate for unified AI access (chat + image generation); config via `~/.config/ailloy/config.yaml`; async via `tokio`
 - FPS overlay in top-right corner
 
 ## Releasing

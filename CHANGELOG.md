@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.0] - 2026-03-06
+
+### Changed
+
+- **AI integration rewrite:** Migrated from custom AI provider system (direct OpenAI/Gemini API calls via `ureq`) to the [`ailloy`](https://github.com/mklab-se/ailloy) crate for unified AI access with async support
+- New AI subcommands: `ai test`, `ai enable`, `ai disable`, `ai config` replace the old `ai init`, `ai status`, `ai remove`
+- `ai` (no subcommand) now shows status directly
+- `ai test` supports interactive testing of both chat completion and image generation with inline terminal image display (iTerm2, Kitty)
+- `ai config` opens the ailloy configuration file in your editor
+
+### Removed
+
+- `generate-icons` command (AI icon generation now handled via ailloy)
+- Custom `AiConfig`, `AiProvider`, and `ImageGenProvider` types from config (replaced by ailloy's config system)
+- `ureq` and `serde_json` dependencies (replaced by `ailloy` and `tokio`)
+
 ## [0.8.1] - 2026-03-04
 
 ### Added
