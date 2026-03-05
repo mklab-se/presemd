@@ -51,10 +51,10 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Configure AI provider for enhanced features
+    /// Manage AI features (shows status when run without a subcommand)
     Ai {
         #[command(subcommand)]
-        command: AiCommands,
+        command: Option<AiCommands>,
     },
 
     /// View and modify configuration
@@ -88,12 +88,6 @@ pub enum Commands {
         height: u32,
     },
 
-    /// Generate diagram icons using AI image generation
-    GenerateIcons {
-        /// Markdown file containing diagrams
-        file: PathBuf,
-    },
-
     /// Print the mdeck markdown format specification
     Spec {
         /// Print a concise quick-reference card instead of the full spec
@@ -107,14 +101,17 @@ pub enum Commands {
 
 #[derive(Subcommand)]
 pub enum AiCommands {
-    /// Set up AI provider for enhanced features
-    Init,
-
-    /// Show current AI provider configuration
-    Status,
-
-    /// Remove AI configuration
-    Remove,
+    /// Test AI integration by sending a message
+    Test {
+        /// Message to send (default: "Say hello in one sentence.")
+        message: Option<String>,
+    },
+    /// Enable AI features for mdeck
+    Enable,
+    /// Disable AI features for mdeck
+    Disable,
+    /// Open AI configuration file in your editor
+    Config,
 }
 
 #[derive(Subcommand)]
@@ -143,7 +140,12 @@ pub enum Shell {
 impl Cli {
     pub fn run(self) -> anyhow::Result<()> {
         match self.command {
-            Some(Commands::Ai { command }) => crate::commands::ai::run(command),
+            Some(Commands::Ai { command }) => {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()?;
+                rt.block_on(crate::commands::ai::run(command))
+            }
             Some(Commands::Config { command }) => crate::commands::config::run(command),
             Some(Commands::Completion { shell }) => {
                 crate::commands::completion::run(shell);
@@ -155,12 +157,6 @@ impl Cli {
                 width,
                 height,
             }) => crate::commands::export::run(file, output_dir, width, height),
-            Some(Commands::GenerateIcons { file }) => {
-                if !file.exists() {
-                    anyhow::bail!("File not found: {}", file.display());
-                }
-                crate::commands::generate_icons::run(&file)
-            }
             Some(Commands::Spec { short }) => {
                 crate::commands::spec::run(short);
                 Ok(())

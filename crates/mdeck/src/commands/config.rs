@@ -51,20 +51,29 @@ fn show() -> Result<()> {
 
     println!();
 
-    match &config.ai {
-        Some(ai) => {
-            println!("{}", "ai:".bold());
-            println!(
-                "  {} {}",
-                "provider:".bold(),
-                ai.provider.display_name().cyan()
-            );
-            if let Some(model) = &ai.model {
+    match ailloy::config::Config::load().ok().and_then(|c| {
+        c.default_chat_node().ok().map(|(id, node)| {
+            (
+                id.to_string(),
+                format!("{:?}", node.provider),
+                node.model.clone(),
+            )
+        })
+    }) {
+        Some((id, provider, model)) => {
+            println!("{}", "ai (via ailloy):".bold());
+            println!("  {} {}", "node:".bold(), id.cyan());
+            println!("  {} {}", "provider:".bold(), provider);
+            if let Some(model) = model {
                 println!("  {} {}", "model:".bold(), model);
             }
         }
         None => {
-            println!("{} (not set)", "ai:".bold());
+            println!(
+                "{} (not set — run {})",
+                "ai:".bold(),
+                "ailloy config".cyan()
+            );
         }
     }
 
