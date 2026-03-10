@@ -196,11 +196,11 @@ MDeck integrates with AI image generation. Add `![prompt](image-generation)` to 
 
 The images below were generated using `mdeck ai generate` with the style: *"Cinematic landscape photography style. Vivid colors, dramatic lighting, sweeping vistas."*
 
-<img src="sample-presentations/images/golden-savanna-acacias.png" width="720">
+<img src="media/gallery/africa.png" width="720">
 
 *African savanna at golden hour — generated from a text prompt and automatically placed in the slide.*
 
-<img src="sample-presentations/images/antarctic-aurora-icebergs.png" width="720">
+<img src="media/gallery/antarctica.png" width="720">
 
 *Antarctic ice shelf with aurora — another AI-generated image used in the [continents presentation](sample-presentations/continents.md).*
 
