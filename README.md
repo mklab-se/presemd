@@ -98,7 +98,7 @@ cargo run -p mdeck     # Run the app
 
 ## Documentation
 
-The format specification (`crates/mdeck/doc/mdeck-spec.md`) is the authoritative reference for the MDeck markdown format. It is embedded in the binary and available via `mdeck spec`.
+The format specification ([`crates/mdeck/doc/mdeck-spec.md`](crates/mdeck/doc/mdeck-spec.md)) is the authoritative reference for the MDeck markdown format. It is embedded in the binary and available via `mdeck spec`.
 
 **Important:** The spec must be kept up to date whenever features are added or changed. Any new slide layout, directive, visualization type, or keyboard shortcut must be documented in the spec before release.
 
