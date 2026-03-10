@@ -451,6 +451,7 @@ impl PresentationApp {
         self.image_cache.clear();
         self.precache_cancel.store(true, Ordering::Relaxed);
         render::diagram::clear_route_cache();
+        render::visualizations::word_cloud::clear_cache();
         self.precache_cancel = Arc::new(AtomicBool::new(false));
         self.transition = None;
         self.on_end_slide = false;

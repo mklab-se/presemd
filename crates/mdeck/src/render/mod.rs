@@ -4,6 +4,7 @@ pub mod layouts;
 pub mod syntax;
 pub mod text;
 pub mod transition;
+pub mod visualizations;
 
 use std::time::Instant;
 
@@ -116,6 +117,17 @@ pub fn render_slide(
             scale,
         ),
         Layout::Diagram => layouts::diagram::render(
+            ui,
+            slide,
+            theme,
+            rect,
+            opacity,
+            image_cache,
+            reveal_step,
+            reveal_timestamp,
+            scale,
+        ),
+        Layout::Visualization => layouts::visualization::render(
             ui,
             slide,
             theme,

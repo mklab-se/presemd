@@ -8,3 +8,4 @@ pub mod quote;
 pub mod section;
 pub mod title;
 pub mod two_column;
+pub mod visualization;

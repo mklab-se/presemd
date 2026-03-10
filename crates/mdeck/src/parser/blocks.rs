@@ -191,7 +191,7 @@ fn parse_code_block(lines: &[&str], start: usize, fence_char: char) -> (Block, u
 
     // Parse language and highlight spec from opening line
     let after_fence = &opening[fence_len..];
-    let (language, highlight_lines, is_diagram) = parse_code_info(after_fence.trim());
+    let (language, highlight_lines, viz_kind) = parse_code_info(after_fence.trim());
 
     let mut code_lines = Vec::new();
     let mut i = start + 1;
@@ -215,28 +215,52 @@ fn parse_code_block(lines: &[&str], start: usize, fence_char: char) -> (Block, u
 
     let code = code_lines.join("\n");
 
-    if is_diagram {
-        (Block::Diagram { content: code }, i)
-    } else {
-        (
-            Block::CodeBlock {
-                language,
-                code,
-                highlight_lines,
-            },
-            i,
-        )
-    }
+    let block = match viz_kind {
+        VizKind::Diagram => Block::Diagram { content: code },
+        VizKind::WordCloud => Block::WordCloud { content: code },
+        VizKind::Timeline => Block::Timeline { content: code },
+        VizKind::PieChart => Block::PieChart { content: code },
+        VizKind::BarChart => Block::BarChart { content: code },
+        VizKind::None => Block::CodeBlock {
+            language,
+            code,
+            highlight_lines,
+        },
+    };
+    (block, i)
 }
 
-fn parse_code_info(info: &str) -> (Option<String>, Vec<usize>, bool) {
+/// Which visualization type a code block represents (if any).
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum VizKind {
+    None,
+    Diagram,
+    WordCloud,
+    Timeline,
+    PieChart,
+    BarChart,
+}
+
+fn parse_code_info(info: &str) -> (Option<String>, Vec<usize>, VizKind) {
     if info.is_empty() {
-        return (None, vec![], false);
+        return (None, vec![], VizKind::None);
     }
 
-    // Check for @diagram
+    // Check for visualization language tags
     if info.starts_with("@diagram") {
-        return (None, vec![], true);
+        return (None, vec![], VizKind::Diagram);
+    }
+    if info.starts_with("@wordcloud") {
+        return (None, vec![], VizKind::WordCloud);
+    }
+    if info.starts_with("@timeline") {
+        return (None, vec![], VizKind::Timeline);
+    }
+    if info.starts_with("@piechart") {
+        return (None, vec![], VizKind::PieChart);
+    }
+    if info.starts_with("@barchart") {
+        return (None, vec![], VizKind::BarChart);
     }
 
     // Parse language and optional highlight spec
@@ -259,7 +283,7 @@ fn parse_code_info(info: &str) -> (Option<String>, Vec<usize>, bool) {
         Some(lang_part.to_string())
     };
 
-    (language, highlight_part, false)
+    (language, highlight_part, VizKind::None)
 }
 
 fn parse_highlight_spec(spec: &str) -> Vec<usize> {

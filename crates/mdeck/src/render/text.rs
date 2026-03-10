@@ -500,6 +500,11 @@ pub fn measure_single_block_height(
             rows.len() as f32 * row_height + 10.0 * scale
         }
         Block::HorizontalRule => 2.0 * scale,
+        Block::Diagram { .. }
+        | Block::WordCloud { .. }
+        | Block::Timeline { .. }
+        | Block::PieChart { .. }
+        | Block::BarChart { .. } => 500.0 * scale, // visualizations fill available space
         _ => theme.body_size * scale * 1.5,
     }
 }
@@ -590,6 +595,52 @@ pub fn draw_block(
             0.0,
             opacity,
             image_cache,
+            reveal_step,
+            None,
+            scale,
+        ),
+        Block::WordCloud { content } => crate::render::visualizations::word_cloud::draw_word_cloud(
+            ui,
+            content,
+            theme,
+            pos,
+            max_width,
+            0.0,
+            opacity,
+            reveal_step,
+            scale,
+        ),
+        Block::Timeline { content } => crate::render::visualizations::timeline::draw_timeline(
+            ui,
+            content,
+            theme,
+            pos,
+            max_width,
+            0.0,
+            opacity,
+            reveal_step,
+            scale,
+        ),
+        Block::PieChart { content } => crate::render::visualizations::pie_chart::draw_pie_chart(
+            ui,
+            content,
+            theme,
+            pos,
+            max_width,
+            0.0,
+            opacity,
+            reveal_step,
+            None,
+            scale,
+        ),
+        Block::BarChart { content } => crate::render::visualizations::bar_chart::draw_bar_chart(
+            ui,
+            content,
+            theme,
+            pos,
+            max_width,
+            0.0,
+            opacity,
             reveal_step,
             None,
             scale,

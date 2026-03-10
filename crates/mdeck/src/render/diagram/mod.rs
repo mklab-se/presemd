@@ -885,7 +885,7 @@ fn draw_routed_edge(
     if !label.is_empty() && anim_progress >= 1.0 {
         let mid_distance = total_len * 0.20;
         let mid = polyline_point_at_distance(&smooth_points, mid_distance);
-        let label_font_size = theme.body_size * 0.45 * scale;
+        let label_font_size = theme.body_size * 0.65 * scale;
         let label_padding = 5.0 * scale;
         let galley = painter.layout_no_wrap(
             label.to_string(),
@@ -2054,7 +2054,7 @@ pub fn draw_diagram_sized(
         }
 
         // Label text below icon
-        let label_font_size = theme.body_size * 0.55 * scale;
+        let label_font_size = theme.body_size * 0.8 * scale;
         let galley = painter.layout(
             node.label.clone(),
             FontId::proportional(label_font_size),

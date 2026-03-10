@@ -74,6 +74,18 @@ pub enum Block {
     Diagram {
         content: String,
     },
+    WordCloud {
+        content: String,
+    },
+    Timeline {
+        content: String,
+    },
+    PieChart {
+        content: String,
+    },
+    BarChart {
+        content: String,
+    },
     ColumnSeparator,
 }
 
@@ -126,6 +138,7 @@ pub enum Layout {
     Code,
     Bullet,
     Diagram,
+    Visualization,
     TwoColumn,
     Content,
 }
@@ -165,6 +178,7 @@ fn classify_layout(directives: &[Directive], blocks: &[Block]) -> Layout {
                 "code" => Layout::Code,
                 "bullets" | "bullet" => Layout::Bullet,
                 "diagram" => Layout::Diagram,
+                "visualization" => Layout::Visualization,
                 "two-column" => Layout::TwoColumn,
                 _ => Layout::Content,
             };
@@ -180,6 +194,7 @@ fn classify_layout(directives: &[Directive], blocks: &[Block]) -> Layout {
     let mut code_blocks = 0;
     let mut quotes = 0;
     let mut diagrams = 0;
+    let mut visualizations = 0;
     let mut tables = 0;
     let mut column_separators = 0;
 
@@ -198,6 +213,10 @@ fn classify_layout(directives: &[Directive], blocks: &[Block]) -> Layout {
             Block::CodeBlock { .. } => code_blocks += 1,
             Block::BlockQuote { .. } => quotes += 1,
             Block::Diagram { .. } => diagrams += 1,
+            Block::WordCloud { .. }
+            | Block::Timeline { .. }
+            | Block::PieChart { .. }
+            | Block::BarChart { .. } => visualizations += 1,
             Block::Table { .. } => tables += 1,
             Block::ColumnSeparator => column_separators += 1,
             Block::HorizontalRule => {}
@@ -206,9 +225,12 @@ fn classify_layout(directives: &[Directive], blocks: &[Block]) -> Layout {
 
     let total = blocks.len();
 
-    // 1. Diagram
+    // 1. Diagram / Visualization
     if diagrams > 0 {
         return Layout::Diagram;
+    }
+    if visualizations > 0 {
+        return Layout::Visualization;
     }
 
     // 2. Two-column (has column separator)
@@ -298,6 +320,12 @@ pub fn compute_max_steps(blocks: &[Block]) -> usize {
         .map(|b| match b {
             Block::List { items, .. } => count_next_steps(items),
             Block::Diagram { content } => crate::render::diagram::count_diagram_steps(content),
+            Block::WordCloud { content }
+            | Block::Timeline { content }
+            | Block::PieChart { content }
+            | Block::BarChart { content } => {
+                crate::render::visualizations::count_viz_steps(content)
+            }
             _ => 0,
         })
         .max()

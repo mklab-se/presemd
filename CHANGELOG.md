@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.0] - 2026-03-10
+
+### Added
+
+- **Four new visualization types:** Word cloud (`@wordcloud`), timeline (`@timeline`), pie chart (`@piechart`), and bar chart (`@barchart`) — all using the same code-block DSL as diagrams with `@` language tags
+- **Reveal step support for visualizations:** All new visualization types support `-` (static), `+` (next step), and `*` (with previous) reveal markers for progressive disclosure
+- **Bar and pie chart reveal animations:** Bars grow from zero height/width and pie slices sweep from zero angle when revealed, with smooth ease-in-out easing over 0.4 seconds
+- **Mixed content slides:** Visualization layout supports heading + text blocks + visualization on the same slide
+- **Bar chart orientations:** Vertical (default) and horizontal via `# orientation: horizontal` directive
+- **Bar chart grid labels:** Nice-number algorithm for clean axis labels (20, 40, 60 instead of 23.3, 46.7)
+- **Word cloud layout:** Dense spiral placement with area-proportional font sizing, cached for stable positions across frames
+- Sample presentation `test-visualizations.md` covering all visualization types
+
+### Changed
+
+- **Larger fonts across all visualizations and diagrams** for better readability in presentation settings: diagram node labels (0.55x → 0.8x), diagram edge labels (0.45x → 0.65x), timeline dates (0.55x → 0.85x), timeline descriptions (0.45x → 0.7x), pie chart legend (0.45x → 0.65x), bar chart labels (0.4x → 0.6x)
+
 ## [0.9.1] - 2026-03-10
 
 ### Fixed
