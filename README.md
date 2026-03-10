@@ -5,8 +5,8 @@
 <h1 align="center">MDeck</h1>
 
 <p align="center">
-  A markdown-based presentation tool.<br>
-  Write your slides in standard markdown and present them beautifully.
+  Stunning presentations from markdown.<br>
+  Write content. MDeck handles the rest.
 </p>
 
 <p align="center">
@@ -27,13 +27,12 @@
 
 ## What is MDeck?
 
-MDeck turns standard markdown files into polished presentations. No proprietary formats, no complex setup — just write markdown and present.
+MDeck creates stunning presentations from standard markdown files. No proprietary formats, no complex setup — just write markdown and present beautifully.
 
-- **Any `.md` file is instantly presentable** — layout is inferred from content structure
-- **16 visualization types** — bar charts, diagrams, Gantt charts, word clouds, and more
-- **AI image generation** — generate slide images from text prompts
-- **Built in Rust** — fast, lightweight, GPU-accelerated rendering
-- **Export to PNG** — share slides without the tool
+- **Any `.md` file is instantly presentable** — intelligent layout inference picks the right slide design from your content structure: title slides, bullet lists, code blocks, quotes, images, tables, and more
+- **Built-in visualizations** — architecture diagrams, Gantt charts, word clouds, bar/line/pie charts, KPI dashboards, org charts, timelines, radar charts, scatter plots, Venn diagrams, and more — all from simple text in your markdown
+- **AI-native** — since presentations are just markdown, any AI can help you write them. But MDeck also has AI built directly in: generate images and icons in your chosen style, right from the command line. Your slides, your aesthetic
+- **Built in Rust** — fast, lightweight, GPU-accelerated rendering with smooth transitions and animations
 
 <p align="center">
   <img src="media/gallery/slide-08.png" width="45%">&nbsp;&nbsp;
