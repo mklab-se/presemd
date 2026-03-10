@@ -193,8 +193,8 @@ The complete system at a glance.
 
 #### 6. Quote Slide
 
-**Match:** A `QUOTE`, optionally followed by a `P` (attribution), optionally preceded by a heading.
-**Rendering:** Blockquote large and centered. Attribution below in smaller italic text, right-aligned. Leading `--` or `---` in the attribution is stripped.
+**Match:** A `QUOTE`, optionally followed by a `P` (attribution), optionally preceded by a heading. May include one image.
+**Rendering:** Blockquote large and centered. Attribution below in smaller italic text, right-aligned. Leading `--` or `---` in the attribution is stripped. If an image is present, the quote renders in the left 55% and the image in the right 40% as a side panel.
 
 ```markdown
 > The best way to predict the future is to invent it.
@@ -204,8 +204,8 @@ The complete system at a glance.
 
 #### 7. Code Slide
 
-**Match:** A `CODE` block, optionally preceded by a heading and/or a short `P`.
-**Rendering:** Code block with syntax highlighting as primary element. Heading at top.
+**Match:** A `CODE` block, optionally preceded by a heading and/or a short `P`. May include one image.
+**Rendering:** Code block with syntax highlighting as primary element. Heading at top. If an image is present, the code renders in the left 55% and the image in the right 40% as a side panel.
 
 ```markdown
 # Connection Pool
@@ -220,8 +220,8 @@ pub struct Pool {
 
 #### 8. Bullet Slide
 
-**Match:** A heading followed by a `UL` or `OL`.
-**Rendering:** Heading at top, list below with generous spacing. Nesting supported up to 3 levels.
+**Match:** A heading followed by a `UL` or `OL`. May include one image.
+**Rendering:** Heading at top, list below with generous spacing. Nesting supported up to 3 levels. If an image is present, the content renders in the left 55% and the image in the right 40% as a side panel.
 
 ```markdown
 # Key Takeaways

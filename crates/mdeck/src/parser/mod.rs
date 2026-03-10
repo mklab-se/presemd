@@ -338,18 +338,18 @@ fn classify_layout(directives: &[Directive], blocks: &[Block]) -> Layout {
         return Layout::Gallery;
     }
 
-    // 7. Quote slide
-    if quotes > 0 && lists == 0 && code_blocks == 0 && images == 0 && tables == 0 {
+    // 7. Quote slide (allow one image for side-panel rendering)
+    if quotes > 0 && lists == 0 && code_blocks == 0 && images <= 1 && tables == 0 {
         return Layout::Quote;
     }
 
-    // 8. Code slide
-    if code_blocks > 0 && lists == 0 && images == 0 && quotes == 0 && tables == 0 {
+    // 8. Code slide (allow one image for side-panel rendering)
+    if code_blocks > 0 && lists == 0 && images <= 1 && quotes == 0 && tables == 0 {
         return Layout::Code;
     }
 
-    // 9. Bullet slide: heading + list
-    if !headings.is_empty() && lists > 0 && code_blocks == 0 && images == 0 && quotes == 0 {
+    // 9. Bullet slide: heading + list (allow one image for side-panel rendering)
+    if !headings.is_empty() && lists > 0 && code_blocks == 0 && images <= 1 && quotes == 0 {
         return Layout::Bullet;
     }
 

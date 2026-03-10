@@ -1,6 +1,8 @@
 use eframe::egui::{self, Pos2};
 
 use crate::parser::{Block, Inline, Slide};
+use crate::render::image_cache::ImageCache;
+use crate::render::layouts::image_split;
 use crate::render::text;
 use crate::theme::Theme;
 
@@ -11,11 +13,79 @@ pub fn render(
     theme: &Theme,
     rect: egui::Rect,
     opacity: f32,
+    image_cache: &ImageCache,
+    scale: f32,
+) {
+    if image_split::has_image(&slide.blocks) {
+        let padding = 80.0 * scale;
+        let padded_rect = egui::Rect::from_min_max(
+            egui::pos2(rect.left() + padding, rect.top() + padding),
+            egui::pos2(rect.right() - padding, rect.bottom() - padding),
+        );
+        render_with_image(ui, slide, theme, padded_rect, opacity, image_cache, scale);
+    } else {
+        render_text_only(ui, slide, theme, rect, opacity, scale);
+    }
+}
+
+fn render_text_only(
+    ui: &egui::Ui,
+    slide: &Slide,
+    theme: &Theme,
+    rect: egui::Rect,
+    opacity: f32,
     scale: f32,
 ) {
     let padding = 80.0 * scale;
     let content_rect = rect.shrink(padding);
 
+    render_quote_content(ui, slide, theme, content_rect, opacity, scale);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_with_image(
+    ui: &egui::Ui,
+    slide: &Slide,
+    theme: &Theme,
+    padded_rect: egui::Rect,
+    opacity: f32,
+    image_cache: &ImageCache,
+    scale: f32,
+) {
+    let (_, image_block) = image_split::split_image(&slide.blocks);
+    let (left_rect, right_rect) = image_split::image_split_rects(padded_rect);
+
+    // Render quote content in the left area
+    render_quote_content(ui, slide, theme, left_rect, opacity, scale);
+
+    // Render image in the right area
+    if let Some(Block::Image {
+        alt,
+        path,
+        directives,
+    }) = image_block
+    {
+        text::draw_image_in_area(
+            ui,
+            path,
+            alt,
+            directives,
+            theme,
+            right_rect,
+            opacity,
+            image_cache,
+        );
+    }
+}
+
+fn render_quote_content(
+    ui: &egui::Ui,
+    slide: &Slide,
+    theme: &Theme,
+    content_rect: egui::Rect,
+    opacity: f32,
+    scale: f32,
+) {
     // Find heading, quote, and attribution
     let mut heading: Option<(u8, &Vec<Inline>)> = None;
     let mut quote_inlines: Option<&Vec<Inline>> = None;

@@ -155,6 +155,7 @@ mdeck --help                 # Show help
   - `test-viz-timeline.md` — timelines (basic, long, reveal)
   - `test-viz-venn.md` — Venn diagrams (2-set, 3-set, reveal)
   - `test-viz-wordcloud.md` — word clouds (large, small, progressive reveal)
+  - `test-image-layouts.md` — image split layouts (bullet+image, code+image, quote+image, content+image)
   - `test-diagram.md` — diagrams (auto-layout, grid, arrow types, reveal)
   - `test-all-visualizations.md` — comprehensive test with every visualization type
   When working on a specific visualization type, use its dedicated test file for faster iteration.

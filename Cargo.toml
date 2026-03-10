@@ -5,7 +5,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.11.1"
+version = "0.11.2"
 edition = "2024"
 authors = ["Kristofer Liljeblad <kristofer@mklab.se>"]
 license = "MIT"

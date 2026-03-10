@@ -55,7 +55,9 @@ pub fn render_slide(
     match slide.layout {
         Layout::Title => layouts::title::render(ui, slide, theme, rect, opacity, scale),
         Layout::Section => layouts::section::render(ui, slide, theme, rect, opacity, scale),
-        Layout::Quote => layouts::quote::render(ui, slide, theme, rect, opacity, scale),
+        Layout::Quote => {
+            layouts::quote::render(ui, slide, theme, rect, opacity, image_cache, scale)
+        }
         Layout::Bullet => layouts::bullet::render(
             ui,
             slide,

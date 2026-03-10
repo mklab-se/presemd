@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.2] - 2026-03-10
+
+### Added
+
+- **Image-aware layouts for Bullet, Code, and Quote slides:** Adding a single image to a bullet, code, or quote slide now renders the content on the left (55%) with the image as a side panel on the right (40%), instead of falling through to the generic Content layout. The Content (fallback) layout also gains the same image-split behavior.
+
 ## [0.11.1] - 2026-03-10
 
 ### Added

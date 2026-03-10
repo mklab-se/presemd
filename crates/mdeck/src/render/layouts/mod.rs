@@ -4,6 +4,7 @@ pub mod content;
 pub mod diagram;
 pub mod gallery;
 pub mod image_slide;
+pub mod image_split;
 pub mod quote;
 pub mod section;
 pub mod title;
