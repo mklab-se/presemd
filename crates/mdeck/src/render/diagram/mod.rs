@@ -208,6 +208,7 @@ struct DiagramNode {
     icon: String,
     grid_pos: Option<(u32, u32)>,
     reveal: DiagramReveal,
+    parse_order: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -225,6 +226,7 @@ struct DiagramEdge {
     label: String,
     arrow: ArrowKind,
     reveal: DiagramReveal,
+    parse_order: usize,
 }
 
 // ─── Orthogonal routing ─────────────────────────────────────────────────────
@@ -988,6 +990,7 @@ fn parse_diagram(content: &str) -> (Vec<DiagramNode>, Vec<DiagramEdge>, DiagramS
     let mut edges = Vec::new();
     let mut seen_nodes: HashMap<String, usize> = HashMap::new();
     let mut diagram_scale = DiagramScale::Fit;
+    let mut parse_order_counter = 0usize;
 
     for line in content.lines() {
         let trimmed = line.trim();
@@ -1050,6 +1053,7 @@ fn parse_diagram(content: &str) -> (Vec<DiagramNode>, Vec<DiagramEdge>, DiagramS
                         icon: String::new(),
                         grid_pos: None,
                         reveal: DiagramReveal::Static,
+                        parse_order: 0,
                     });
                 }
             }
@@ -1060,7 +1064,9 @@ fn parse_diagram(content: &str) -> (Vec<DiagramNode>, Vec<DiagramEdge>, DiagramS
                 label,
                 arrow: arrow_kind,
                 reveal,
+                parse_order: parse_order_counter,
             });
+            parse_order_counter += 1;
         } else if let Some(colon_pos) = trimmed.find(": ") {
             // Node declaration with label: "Name: Label"
             let name = trimmed[..colon_pos].trim().to_string();
@@ -1074,6 +1080,7 @@ fn parse_diagram(content: &str) -> (Vec<DiagramNode>, Vec<DiagramEdge>, DiagramS
                 if meta_pos.is_some() {
                     nodes[idx].grid_pos = meta_pos;
                 }
+                nodes[idx].parse_order = parse_order_counter;
             } else {
                 seen_nodes.insert(name.clone(), nodes.len());
                 nodes.push(DiagramNode {
@@ -1082,8 +1089,10 @@ fn parse_diagram(content: &str) -> (Vec<DiagramNode>, Vec<DiagramEdge>, DiagramS
                     icon: meta_icon.clone(),
                     grid_pos: meta_pos,
                     reveal,
+                    parse_order: parse_order_counter,
                 });
             }
+            parse_order_counter += 1;
         } else {
             // Plain node name (e.g. "Server" or "Server (icon: server, pos: 1,1)")
             let name = trimmed.trim().to_string();
@@ -1095,6 +1104,7 @@ fn parse_diagram(content: &str) -> (Vec<DiagramNode>, Vec<DiagramEdge>, DiagramS
                     if meta_pos.is_some() {
                         nodes[idx].grid_pos = meta_pos;
                     }
+                    nodes[idx].parse_order = parse_order_counter;
                 } else {
                     seen_nodes.insert(name.clone(), nodes.len());
                     nodes.push(DiagramNode {
@@ -1103,8 +1113,10 @@ fn parse_diagram(content: &str) -> (Vec<DiagramNode>, Vec<DiagramEdge>, DiagramS
                         icon: meta_icon.clone(),
                         grid_pos: meta_pos,
                         reveal,
+                        parse_order: parse_order_counter,
                     });
                 }
+                parse_order_counter += 1;
             }
         }
     }
@@ -1829,31 +1841,42 @@ pub fn draw_diagram_sized(
     // Compute reveal step assignments for each element.
     // Static elements are always visible (step 0). Each `+` increments the step counter.
     // `*` elements share the same step as the previous `+`.
-    // Process all elements (nodes then edges) — this matches parse_diagram ordering
-    // since it collects all nodes first from declarations, then edges.
+    // Process all elements in file order (by parse_order) so that interleaved nodes and
+    // edges get correct step numbers matching their source ordering.
+    #[derive(Clone, Copy)]
+    enum ElementRef {
+        Node(usize),
+        Edge(usize),
+    }
+    let mut all_elements: Vec<ElementRef> = Vec::new();
+    for (i, _) in nodes.iter().enumerate() {
+        all_elements.push(ElementRef::Node(i));
+    }
+    for (i, _) in edges.iter().enumerate() {
+        all_elements.push(ElementRef::Edge(i));
+    }
+    all_elements.sort_by_key(|e| match e {
+        ElementRef::Node(i) => nodes[*i].parse_order,
+        ElementRef::Edge(i) => edges[*i].parse_order,
+    });
+
     let mut step_counter = 0usize;
-    let node_steps: Vec<usize> = nodes
-        .iter()
-        .map(|n| match n.reveal {
+    let mut node_steps = vec![0usize; nodes.len()];
+    let mut edge_steps = vec![0usize; edges.len()];
+    for elem in &all_elements {
+        let (reveal, target, idx) = match elem {
+            ElementRef::Node(i) => (nodes[*i].reveal, &mut node_steps, *i),
+            ElementRef::Edge(i) => (edges[*i].reveal, &mut edge_steps, *i),
+        };
+        target[idx] = match reveal {
             DiagramReveal::Static => 0,
             DiagramReveal::NextStep => {
                 step_counter += 1;
                 step_counter
             }
             DiagramReveal::WithPrev => step_counter,
-        })
-        .collect();
-    let edge_steps: Vec<usize> = edges
-        .iter()
-        .map(|e| match e.reveal {
-            DiagramReveal::Static => 0,
-            DiagramReveal::NextStep => {
-                step_counter += 1;
-                step_counter
-            }
-            DiagramReveal::WithPrev => step_counter,
-        })
-        .collect();
+        };
+    }
 
     if nodes.is_empty() {
         // Fallback for unparseable diagrams
@@ -3306,6 +3329,122 @@ mod diagram_tests {
     fn test_diagram_debug_info_empty() {
         let info = diagram_debug_info("");
         assert_eq!(info, "No nodes parsed.");
+    }
+
+    /// Helper: compute reveal step assignments in file order (mirrors draw_diagram_sized logic).
+    fn compute_steps(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> (Vec<usize>, Vec<usize>) {
+        #[derive(Clone, Copy)]
+        enum ElementRef {
+            Node(usize),
+            Edge(usize),
+        }
+        let mut all_elements: Vec<ElementRef> = Vec::new();
+        for (i, _) in nodes.iter().enumerate() {
+            all_elements.push(ElementRef::Node(i));
+        }
+        for (i, _) in edges.iter().enumerate() {
+            all_elements.push(ElementRef::Edge(i));
+        }
+        all_elements.sort_by_key(|e| match e {
+            ElementRef::Node(i) => nodes[*i].parse_order,
+            ElementRef::Edge(i) => edges[*i].parse_order,
+        });
+
+        let mut step_counter = 0usize;
+        let mut node_steps = vec![0usize; nodes.len()];
+        let mut edge_steps = vec![0usize; edges.len()];
+        for elem in &all_elements {
+            let (reveal, target, idx) = match elem {
+                ElementRef::Node(i) => (nodes[*i].reveal, &mut node_steps, *i),
+                ElementRef::Edge(i) => (edges[*i].reveal, &mut edge_steps, *i),
+            };
+            target[idx] = match reveal {
+                DiagramReveal::Static => 0,
+                DiagramReveal::NextStep => {
+                    step_counter += 1;
+                    step_counter
+                }
+                DiagramReveal::WithPrev => step_counter,
+            };
+        }
+        (node_steps, edge_steps)
+    }
+
+    #[test]
+    fn test_reveal_steps_interleaved_file_order() {
+        // Reproduces the Pipeline Growth diagram where nodes and edges
+        // are interleaved. Steps must follow file order, not nodes-then-edges.
+        let content = "\
+- Source (icon: storage, pos: 1,1)
++ Build  (icon: container, pos: 2,1)
++ Source -> Build: triggers
++ Test   (icon: function, pos: 3,1)
+* Build -> Test: on success
++ Deploy (icon: cloud, pos: 4,1)
+* Test -> Deploy: all green";
+
+        let (nodes, edges, _) = parse_diagram(content);
+        assert_eq!(nodes.len(), 4); // Source, Build, Test, Deploy
+        assert_eq!(edges.len(), 3); // Source->Build, Build->Test, Test->Deploy
+
+        let (node_steps, edge_steps) = compute_steps(&nodes, &edges);
+
+        // Source is static (step 0)
+        assert_eq!(node_steps[0], 0, "Source should be step 0");
+        // + Build → step 1
+        assert_eq!(node_steps[1], 1, "Build should be step 1");
+        // + Source -> Build → step 2
+        assert_eq!(edge_steps[0], 2, "Source->Build should be step 2");
+        // + Test → step 3
+        assert_eq!(node_steps[2], 3, "Test should be step 3");
+        // * Build -> Test → step 3 (with prev)
+        assert_eq!(edge_steps[1], 3, "Build->Test should be step 3 (with prev)");
+        // + Deploy → step 4
+        assert_eq!(node_steps[3], 4, "Deploy should be step 4");
+        // * Test -> Deploy → step 4 (with prev)
+        assert_eq!(
+            edge_steps[2], 4,
+            "Test->Deploy should be step 4 (with prev)"
+        );
+    }
+
+    #[test]
+    fn test_reveal_steps_incremental_build() {
+        // The "Incremental Build" diagram from test-diagram.md
+        let content = "\
+- Server (icon: server, pos: 1,1)
+- DB     (icon: database, pos: 2,1)
+- Server -> DB: queries
+
++ Cache (icon: cache, pos: 1,2)
++ Server -> Cache: reads
++ Cache -> DB: fills
+
++ Monitor (icon: monitor, pos: 2,2)
+* Monitor -- Server: observes
+* Monitor -- DB: observes";
+
+        let (nodes, edges, _) = parse_diagram(content);
+        let (node_steps, edge_steps) = compute_steps(&nodes, &edges);
+
+        // Static elements: step 0
+        assert_eq!(node_steps[0], 0, "Server = 0");
+        assert_eq!(node_steps[1], 0, "DB = 0");
+        assert_eq!(edge_steps[0], 0, "Server->DB = 0");
+
+        // + Cache → step 1
+        assert_eq!(node_steps[2], 1, "Cache = 1");
+        // + Server -> Cache → step 2
+        assert_eq!(edge_steps[1], 2, "Server->Cache = 2");
+        // + Cache -> DB → step 3
+        assert_eq!(edge_steps[2], 3, "Cache->DB = 3");
+
+        // + Monitor → step 4
+        assert_eq!(node_steps[3], 4, "Monitor = 4");
+        // * Monitor -- Server → step 4
+        assert_eq!(edge_steps[3], 4, "Monitor--Server = 4");
+        // * Monitor -- DB → step 4
+        assert_eq!(edge_steps[4], 4, "Monitor--DB = 4");
     }
 
     #[test]

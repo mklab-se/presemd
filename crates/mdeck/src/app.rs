@@ -809,7 +809,7 @@ impl eframe::App for PresentationApp {
         let now = Instant::now();
         let frame_delta = now.duration_since(self.last_frame);
         self.last_frame = now;
-        if frame_delta.as_millis() > 200 {
+        if frame_delta.as_millis() > 2000 {
             let jump = frame_delta;
             self.incident_log.record(
                 "time_jump",

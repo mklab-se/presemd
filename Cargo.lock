@@ -2218,7 +2218,7 @@ dependencies = [
 
 [[package]]
 name = "mdeck"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "ailloy",
  "anyhow",
