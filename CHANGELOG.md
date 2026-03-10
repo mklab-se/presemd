@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.1] - 2026-03-11
+
+### Changed
+
+- **Improved README** — rewritten "What is MDeck?" section emphasizing presentation quality, built-in visualizations, and AI-native workflow. Removed minor features from the hero section.
+- **Updated gallery images** — refreshed AI-generated visuals in GALLERY.md.
+
 ## [0.12.0] - 2026-03-11
 
 ### Added
