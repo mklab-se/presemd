@@ -1,10 +1,16 @@
 /// Split a document body (after frontmatter extraction) into raw slide strings.
 ///
-/// Three mechanisms create slide breaks:
+/// Three mechanisms create slide breaks (all coexist and combine):
 /// 1. `---` with blank lines on both sides
 /// 2. Three or more consecutive blank lines (4+ newlines)
-/// 3. A `# ` heading when the current slide already has content
-pub fn split(body: &str) -> Vec<String> {
+/// 3. Heading-level splits: a heading at or above the slide level starts a new slide
+///
+/// The `slide_level` parameter controls which heading level triggers splits:
+/// - `Some(n)` — explicitly set via `@slide-level: n` in frontmatter; headings at
+///   level 1..=n all split slides.
+/// - `None` — inferred: if there is exactly one H1, both H1 and H2 split (level 2);
+///   if there are multiple H1s, only H1 splits (level 1).
+pub fn split(body: &str, slide_level: Option<u8>) -> Vec<String> {
     // Phase 1: Replace explicit --- separators and blank-line gaps with a sentinel
     let sentinel = "\x00SLIDE_BREAK\x00";
 
@@ -13,6 +19,9 @@ pub fn split(body: &str) -> Vec<String> {
 
     // Split into lines first
     let lines: Vec<String> = body.split('\n').map(String::from).collect();
+
+    // Determine effective slide level
+    let level = slide_level.unwrap_or_else(|| infer_slide_level(&lines));
 
     // Process lines to detect separators
     let mut i = 0;
@@ -86,22 +95,59 @@ pub fn split(body: &str) -> Vec<String> {
         .map(|s| s.trim().to_string())
         .collect();
 
-    // Phase 4: Apply heading inference within each chunk
+    // Phase 4: Apply heading-level splits within each chunk
     let mut slides: Vec<String> = Vec::new();
     for chunk in chunks {
         if chunk.is_empty() {
             continue;
         }
-        split_by_heading_inference(&chunk, &mut slides);
+        split_by_heading_level(&chunk, level, &mut slides);
     }
 
     slides
 }
 
-/// Split a chunk by H1 heading inference: when `# ` appears at the start of a line
-/// and the current slide already has content, insert a break.
+/// Infer the slide level from the document content.
+/// If there is exactly one H1 heading, infer level 2 (H1 + H2 both split).
+/// If there are multiple H1 headings, infer level 1 (only H1 splits).
+/// If there are no H1 headings, infer level 2 so H2 headings can split.
+fn infer_slide_level(lines: &[String]) -> u8 {
+    let mut h1_count = 0u32;
+    let mut in_code_fence = false;
+    let mut fence_char: char = '`';
+    let mut fence_len: usize = 0;
+
+    for line in lines {
+        let trimmed = line.trim();
+
+        if in_code_fence {
+            let closing_count = trimmed.chars().take_while(|&c| c == fence_char).count();
+            if closing_count >= fence_len
+                && trimmed
+                    .chars()
+                    .skip(closing_count)
+                    .all(|c| c.is_whitespace())
+            {
+                in_code_fence = false;
+            }
+        } else if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_code_fence = true;
+            fence_char = trimmed.chars().next().unwrap();
+            fence_len = trimmed.chars().take_while(|&c| c == fence_char).count();
+        }
+
+        if !in_code_fence && line.starts_with("# ") {
+            h1_count += 1;
+        }
+    }
+
+    if h1_count <= 1 { 2 } else { 1 }
+}
+
+/// Split a chunk by heading level: when a heading at or above the given `level`
+/// appears and the current slide already has content, insert a break.
 /// Lines inside fenced code blocks are never treated as headings.
-fn split_by_heading_inference(chunk: &str, slides: &mut Vec<String>) {
+fn split_by_heading_level(chunk: &str, level: u8, slides: &mut Vec<String>) {
     let mut current = String::new();
     let mut has_content = false;
     let mut in_code_fence = false;
@@ -128,10 +174,10 @@ fn split_by_heading_inference(chunk: &str, slides: &mut Vec<String>) {
             fence_len = trimmed.chars().take_while(|&c| c == fence_char).count();
         }
 
-        if !in_code_fence && line.starts_with("# ") && has_content {
-            // This H1 starts a new slide.
+        if !in_code_fence && is_heading_at_level(line, level) && has_content {
+            // This heading starts a new slide.
             // Move any trailing directives from the old slide to the new one,
-            // since `@layout: X` placed just before a `# Heading` belongs to
+            // since `@layout: X` placed just before a heading belongs to
             // the heading's slide.
             let slide_text = current.trim().to_string();
             let (content_part, trailing_directives) = strip_trailing_directives(&slide_text);
@@ -161,6 +207,17 @@ fn split_by_heading_inference(chunk: &str, slides: &mut Vec<String>) {
     if !slide_text.is_empty() {
         slides.push(slide_text);
     }
+}
+
+/// Check if a line is a markdown heading at or above the given level.
+/// E.g., level=2 matches `# ` (H1) and `## ` (H2) but not `### ` (H3).
+fn is_heading_at_level(line: &str, level: u8) -> bool {
+    let hash_count = line.chars().take_while(|&c| c == '#').count();
+    hash_count >= 1
+        && hash_count <= level as usize
+        && line
+            .get(hash_count..)
+            .is_some_and(|rest| rest.starts_with(' '))
 }
 
 /// Split trailing directive lines (and blank lines before them) from a slide's raw text.
@@ -214,7 +271,7 @@ mod tests {
     #[test]
     fn test_blank_line_split() {
         let body = "Slide one\n\n\n\nSlide two";
-        let slides = split(body);
+        let slides = split(body, None);
         assert_eq!(slides.len(), 2);
         assert_eq!(slides[0], "Slide one");
         assert_eq!(slides[1], "Slide two");
@@ -223,25 +280,55 @@ mod tests {
     #[test]
     fn test_dash_separator() {
         let body = "Slide one\n\n---\n\nSlide two";
-        let slides = split(body);
+        let slides = split(body, None);
         assert_eq!(slides.len(), 2);
         assert_eq!(slides[0], "Slide one");
         assert_eq!(slides[1], "Slide two");
     }
 
     #[test]
-    fn test_heading_inference() {
+    fn test_heading_inference_multiple_h1() {
         let body = "# First\n\nContent\n\n# Second\n\nMore content";
-        let slides = split(body);
+        let slides = split(body, None);
         assert_eq!(slides.len(), 2);
         assert!(slides[0].starts_with("# First"));
         assert!(slides[1].starts_with("# Second"));
     }
 
     #[test]
-    fn test_h2_no_split() {
-        let body = "# Title\n\n## Subtitle\n\nContent";
-        let slides = split(body);
+    fn test_single_h1_infers_h2_split() {
+        // Single H1 → infer slide level 2, so H2 also splits
+        let body = "# Title\n\nSubtitle\n\n## Section One\n\nContent\n\n## Section Two\n\nMore";
+        let slides = split(body, None);
+        assert_eq!(slides.len(), 3, "Expected 3 slides, got {:?}", slides);
+        assert!(slides[0].starts_with("# Title"));
+        assert!(slides[1].starts_with("## Section One"));
+        assert!(slides[2].starts_with("## Section Two"));
+    }
+
+    #[test]
+    fn test_no_h1_infers_h2_split() {
+        // No H1 at all → infer slide level 2, so H2 splits
+        let body = "## First\n\nContent\n\n## Second\n\nMore";
+        let slides = split(body, None);
+        assert_eq!(slides.len(), 2);
+        assert!(slides[0].starts_with("## First"));
+        assert!(slides[1].starts_with("## Second"));
+    }
+
+    #[test]
+    fn test_explicit_slide_level() {
+        // Explicit @slide-level: 3 — H1, H2, and H3 all split
+        let body = "# Title\n\n## Part\n\n### Detail\n\nContent";
+        let slides = split(body, Some(3));
+        assert_eq!(slides.len(), 3, "Expected 3 slides, got {:?}", slides);
+    }
+
+    #[test]
+    fn test_explicit_slide_level_1() {
+        // Explicit @slide-level: 1 — only H1 splits, even with single H1
+        let body = "# Title\n\nSubtitle\n\n## Section\n\nContent";
+        let slides = split(body, Some(1));
         assert_eq!(slides.len(), 1);
     }
 
@@ -249,14 +336,14 @@ mod tests {
     fn test_heading_inference_first_heading() {
         // First heading shouldn't split (no prior content)
         let body = "# Only Heading\n\nContent here";
-        let slides = split(body);
+        let slides = split(body, None);
         assert_eq!(slides.len(), 1);
     }
 
     #[test]
     fn test_combined_separators() {
         let body = "Slide one\n\n\n\n---\n\n\n\nSlide two";
-        let slides = split(body);
+        let slides = split(body, None);
         // Should produce 2 slides, not 3 (overlapping separators = single break)
         assert_eq!(slides.len(), 2);
     }
@@ -264,7 +351,7 @@ mod tests {
     #[test]
     fn test_directive_before_heading_moves_to_next_slide() {
         let body = "# Title\n\nSubtitle\n\n@layout: two-column\n# Second Slide\n\nContent";
-        let slides = split(body);
+        let slides = split(body, Some(1));
         assert_eq!(slides.len(), 2, "Expected 2 slides, got {}", slides.len());
         // Directive should NOT be on the first slide
         assert!(
@@ -283,7 +370,7 @@ mod tests {
     #[test]
     fn test_heading_in_code_block_no_split() {
         let body = "# Title\n\n```python\n# this is a comment\nprint('hi')\n```";
-        let slides = split(body);
+        let slides = split(body, None);
         assert_eq!(
             slides.len(),
             1,
@@ -295,12 +382,21 @@ mod tests {
     fn test_poker_night_slide_count() {
         let content = include_str!("../../../../sample-presentations/poker-night.md");
         // Strip frontmatter
-        let (_, body) = super::super::frontmatter::extract(content);
-        let slides = split(&body);
+        let (meta, body) = super::super::frontmatter::extract(content);
+        let slides = split(&body, meta.slide_level);
         assert!(
             slides.len() >= 14,
             "Expected at least 14 slides, got {}",
             slides.len()
         );
+    }
+
+    #[test]
+    fn test_h2_no_split_with_multiple_h1() {
+        // Multiple H1s → infer level 1, H2 does NOT split
+        let body = "# First\n\n## Sub\n\nContent\n\n# Second\n\nMore";
+        let slides = split(body, None);
+        assert_eq!(slides.len(), 2);
+        assert!(slides[0].contains("## Sub"));
     }
 }

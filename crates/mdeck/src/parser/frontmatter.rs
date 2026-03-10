@@ -77,12 +77,21 @@ fn parse_frontmatter(yaml_str: &str) -> PresentationMeta {
         footer: get_string(&map, "@footer"),
         image_style: get_string(&map, "@image-style"),
         icon_style: get_string(&map, "@icon-style"),
+        slide_level: get_u8(&map, "@slide-level"),
     }
 }
 
 fn get_string(map: &HashMap<String, serde_yaml::Value>, key: &str) -> Option<String> {
     map.get(key).and_then(|v| match v {
         serde_yaml::Value::String(s) => Some(s.clone()),
+        _ => None,
+    })
+}
+
+fn get_u8(map: &HashMap<String, serde_yaml::Value>, key: &str) -> Option<u8> {
+    map.get(key).and_then(|v| match v {
+        serde_yaml::Value::Number(n) => n.as_u64().and_then(|n| u8::try_from(n).ok()),
+        serde_yaml::Value::String(s) => s.trim().parse().ok(),
         _ => None,
     })
 }
@@ -106,6 +115,7 @@ fn parse_frontmatter_manual(yaml_str: &str) -> PresentationMeta {
                 "@footer" => meta.footer = Some(value.to_string()),
                 "@image-style" => meta.image_style = Some(value.to_string()),
                 "@icon-style" => meta.icon_style = Some(value.to_string()),
+                "@slide-level" => meta.slide_level = value.parse().ok(),
                 _ => {}
             }
         }

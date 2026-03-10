@@ -23,6 +23,7 @@ pub struct PresentationMeta {
     pub footer: Option<String>,
     pub image_style: Option<String>,
     pub icon_style: Option<String>,
+    pub slide_level: Option<u8>,
 }
 
 #[derive(Debug, Clone)]
@@ -180,7 +181,7 @@ pub enum Layout {
 
 pub fn parse(content: &str, _base_path: &Path) -> Presentation {
     let (meta, body) = frontmatter::extract(content);
-    let raw_slides = splitter::split(&body);
+    let raw_slides = splitter::split(&body, meta.slide_level);
     let slides: Vec<Slide> = raw_slides
         .into_iter()
         .filter(|raw| !raw.trim().is_empty())

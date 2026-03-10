@@ -32,6 +32,7 @@ base64.workspace = true
 rayon.workspace = true
 notify-debouncer-mini.workspace = true
 ailloy.workspace = true
+futures.workspace = true
 tokio.workspace = true
 
 [package.metadata.binstall]

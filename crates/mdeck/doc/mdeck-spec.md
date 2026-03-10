@@ -62,6 +62,7 @@ date: 2026-02-28
 | `@footer`      | string | none      | Text shown in footer of every slide                |
 | `@image-style` | string | none      | Default AI image generation style (name or description) |
 | `@icon-style`  | string | none      | Default AI icon generation style (name or description)  |
+| `@slide-level` | integer | (inferred) | Heading level that triggers slide breaks (1–6). E.g., `2` means H1 and H2 both split. When omitted, inferred from content. |
 
 **Parser rule:** If the document starts with a line that is exactly `---`, begin parsing YAML until a closing `---` line. If no closing `---` is found before invalid YAML, treat the opening `---` as a slide separator instead (graceful recovery).
 
@@ -99,27 +100,39 @@ Content of slide two.
 
 **Parser rule:** Pattern is `\n{4,}` (three blank lines = four newline characters). Chosen over two blank lines because two blank lines are common in normal markdown formatting and would cause accidental breaks.
 
-### 3.3 Heading inference: `#` starts a new slide
+### 3.3 Heading inference
 
-A level-1 heading (`#`) starts a new slide when the current slide already has content:
+Headings start new slides when the current slide already has content. Which heading levels trigger splits depends on the **slide level**, determined as follows:
+
+1. **Explicit:** Set `@slide-level: N` in frontmatter. Headings at level 1 through N all trigger splits.
+2. **Inferred:** If `@slide-level` is not set:
+   - **Single H1 (or no H1):** Infer slide level 2 — both `#` and `##` trigger splits. This handles "proper" markdown files where H1 is the title and H2s are sections.
+   - **Multiple H1s:** Infer slide level 1 — only `#` triggers splits.
 
 ```markdown
-# Introduction
+# Title Slide
 
-Some content here.
+A subtitle
 
-# The Problem
+## First Topic
 
-This starts a new slide automatically.
+Content here — this is a separate slide because there's only one H1.
+
+## Second Topic
+
+More content — also a separate slide.
 ```
 
-**Parser rule:** When `# ` is encountered and the current slide already contains rendered elements, insert a slide break before the heading. Only level-1 headings (`#`) trigger this. Level-2 and below (`##`, `###`, etc.) do not.
+**Parser rule:** When a heading at or above the slide level is encountered and the current slide already contains rendered elements, insert a slide break before the heading.
 
 ### 3.4 Precedence
 
+All three split mechanisms coexist and combine. When multiple overlap, a single break is produced.
+
 - `---` within 3+ blank lines = single break, not two.
-- `#` heading after `---` = the `---` creates the break, the heading belongs to the new slide.
+- Heading after `---` = the `---` creates the break, the heading belongs to the new slide.
 - Frontmatter `---` delimiters are never treated as slide separators.
+- `@slide-level` controls heading splits but does not affect `---` or blank-line splits.
 
 ---
 

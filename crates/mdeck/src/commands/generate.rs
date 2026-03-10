@@ -1,5 +1,6 @@
 //! `mdeck ai generate <file>` — scan a presentation for AI image markers and generate them.
 
+use std::future::Future;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -25,6 +26,22 @@ struct ImageMarker {
     slide_number: usize,
     /// Image orientation based on layout context.
     orientation: Orientation,
+}
+
+/// Result of a single image generation task.
+struct GenerationResult {
+    /// Task index (for display ordering).
+    index: usize,
+    /// The prompt text used.
+    prompt_text: String,
+    /// 0-indexed line number in the raw file.
+    line_index: usize,
+    /// The original line text.
+    old_line: String,
+    /// The API result.
+    result: anyhow::Result<ailloy::ImageResponse>,
+    /// Whether this is an icon (vs. a regular image).
+    is_icon: bool,
 }
 
 /// A diagram icon marker found in the markdown file.
@@ -158,86 +175,117 @@ pub async fn run(
 
     let client = ailloy::Client::for_capability("image")?;
 
-    // Generate images
-    for (i, marker) in image_markers.iter().enumerate() {
-        let idx = i + 1;
-        let prompt_preview = truncate(&marker.alt_text, 50);
-        print!(
-            "  Generating [{}/{}]: {}...",
-            idx,
-            total,
-            prompt_preview.dimmed()
-        );
-        use std::io::Write;
-        let _ = std::io::stdout().flush();
+    // Build all generation tasks, then run them concurrently
+    use futures::stream::StreamExt;
+    use std::io::Write;
+    use std::pin::Pin;
 
+    const MAX_CONCURRENT: usize = 4;
+
+    let mut all_futures: Vec<Pin<Box<dyn Future<Output = GenerationResult> + '_>>> = Vec::new();
+
+    for (i, marker) in image_markers.iter().enumerate() {
         let combined =
             prompt::build_image_prompt(&image_style, &marker.alt_text, marker.orientation);
+        let client = &client;
+        let alt = marker.alt_text.clone();
+        let line_index = marker.line_index;
+        let old_line = lines[marker.line_index].to_string();
+        all_futures.push(Box::pin(async move {
+            let result = client.generate_image(&combined).await;
+            GenerationResult {
+                index: i,
+                prompt_text: alt,
+                line_index,
+                old_line,
+                result,
+                is_icon: false,
+            }
+        }));
+    }
 
-        match client.generate_image(&combined).await {
+    let image_count = image_markers.len();
+    for (i, marker) in icon_markers.iter().enumerate() {
+        let combined = prompt::build_icon_prompt(&icon_style, &marker.prompt_text);
+        let client = &client;
+        let prompt_text = marker.prompt_text.clone();
+        let line_index = marker.line_index;
+        let old_line = lines[marker.line_index].to_string();
+        all_futures.push(Box::pin(async move {
+            let result = client.generate_image(&combined).await;
+            GenerationResult {
+                index: image_count + i,
+                prompt_text,
+                line_index,
+                old_line,
+                result,
+                is_icon: true,
+            }
+        }));
+    }
+
+    println!(
+        "  Generating {} image(s) with up to {} concurrent requests...\n",
+        total, MAX_CONCURRENT
+    );
+
+    let mut buffered = futures::stream::iter(all_futures).buffer_unordered(MAX_CONCURRENT);
+
+    while let Some(res) = buffered.next().await {
+        let idx = res.index + 1;
+        let kind = if res.is_icon { "icon " } else { "" };
+        let prompt_preview = truncate(&res.prompt_text, 50);
+
+        match res.result {
             Ok(response) => {
                 let ext = ai::image_ext(&response.format);
-                let filename =
-                    generate_filename(has_chat, &marker.alt_text, ext, &images_dir).await;
-                let filepath = images_dir.join(&filename);
+                let (dir, prefix) = if res.is_icon {
+                    (&icons_dir, "")
+                } else {
+                    (&images_dir, "images/")
+                };
+                let filename = generate_filename(has_chat, &res.prompt_text, ext, dir).await;
+                let filepath = dir.join(&filename);
                 std::fs::write(&filepath, &response.data)?;
 
-                println!(" {}", "✓".green().bold());
+                println!(
+                    "  [{}/{}] {}{} {}",
+                    idx,
+                    total,
+                    kind,
+                    prompt_preview,
+                    "✓".green().bold()
+                );
                 ai::display_image_result(&filepath);
 
                 // Record replacement
-                let old_line = lines[marker.line_index].to_string();
-                let new_line = old_line.replace("image-generation", &format!("images/{filename}"));
-                replacements.push((marker.line_index, old_line, new_line));
+                if res.is_icon {
+                    let icon_name = filename
+                        .strip_suffix(&format!(".{ext}"))
+                        .unwrap_or(&filename);
+                    let new_line = replace_icon_marker(&res.old_line, icon_name);
+                    replacements.push((res.line_index, res.old_line.clone(), new_line));
+                } else {
+                    let new_line = res
+                        .old_line
+                        .replace("image-generation", &format!("{prefix}{filename}"));
+                    replacements.push((res.line_index, res.old_line.clone(), new_line));
+                }
                 success_count += 1;
             }
             Err(e) => {
-                println!(" {}", "✗".red().bold());
+                println!(
+                    "  [{}/{}] {}{} {}",
+                    idx,
+                    total,
+                    kind,
+                    prompt_preview,
+                    "✗".red().bold()
+                );
                 eprintln!("    Error: {e}");
             }
         }
-    }
-
-    // Generate icons
-    for (i, marker) in icon_markers.iter().enumerate() {
-        let idx = image_markers.len() + i + 1;
-        let prompt_preview = truncate(&marker.prompt_text, 50);
-        print!(
-            "  Generating [{}/{}]: icon {}...",
-            idx,
-            total,
-            prompt_preview.dimmed()
-        );
-        use std::io::Write;
         let _ = std::io::stdout().flush();
-
-        let combined = prompt::build_icon_prompt(&icon_style, &marker.prompt_text);
-
-        match client.generate_image(&combined).await {
-            Ok(response) => {
-                let ext = ai::image_ext(&response.format);
-                let filename =
-                    generate_filename(has_chat, &marker.prompt_text, ext, &icons_dir).await;
-                let filepath = icons_dir.join(&filename);
-                std::fs::write(&filepath, &response.data)?;
-
-                println!(" {}", "✓".green().bold());
-                ai::display_image_result(&filepath);
-
-                // Record replacement: replace `icon: generate-image, prompt: "..."` with `icon: filename_without_ext`
-                let old_line = lines[marker.line_index].to_string();
-                let icon_name = filename
-                    .strip_suffix(&format!(".{ext}"))
-                    .unwrap_or(&filename);
-                let new_line = replace_icon_marker(&old_line, icon_name);
-                replacements.push((marker.line_index, old_line, new_line));
-                success_count += 1;
-            }
-            Err(e) => {
-                println!(" {}", "✗".red().bold());
-                eprintln!("    Error: {e}");
-            }
-        }
     }
 
     // Rewrite the markdown file

@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.12.0] - 2026-03-11
 
 ### Added
 
@@ -13,6 +13,10 @@ All notable changes to this project will be documented in this file.
 - **Diagram icon aspect ratio preservation:** Non-square icon images are now rendered with correct aspect ratio instead of being stretched.
 - **Ungenerated image warning:** Launching a presentation with `image-generation` markers prints a terminal warning suggesting `mdeck ai generate`.
 - **Enhanced `mdeck ai test`:** Image generation test now lets you choose between normal image and icon, using the configured default styles.
+- **Smart heading-level slide splitting:** Files with a single H1 heading (the common "title + H2 sections" pattern) now automatically split on both H1 and H2 headings. Files with multiple H1s keep the original behavior (only H1 splits). This makes standard markdown files work as presentations without needing explicit `---` separators.
+- **`@slide-level` frontmatter directive:** Explicitly control which heading level triggers slide breaks (e.g., `@slide-level: 2` means H1 and H2 both split). Overrides the automatic inference when set.
+- **Visual gallery (`GALLERY.md`):** Comprehensive showcase of all layouts, diagrams, and visualizations with exported slide screenshots. Linked from README.
+- **Revamped `README.md`:** Restructured with feature overview, visualization table, AI documentation, gallery preview images, and navigation links.
 
 ## [0.11.2] - 2026-03-10
 

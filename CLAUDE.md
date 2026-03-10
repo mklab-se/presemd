@@ -42,7 +42,8 @@ crates/
       config.rs      # Config struct, load/save (~/.config/mdeck/config.yaml)
       commands/
         mod.rs       # Re-exports
-        ai.rs        # AI provider init/status/remove
+        ai.rs        # AI provider init/status/remove/style management
+        generate.rs  # AI image generation for presentations (mdeck ai generate)
         completion.rs # Shell completion generation
         config.rs    # Config show/set
         export.rs    # PNG export via headless eframe rendering
@@ -125,6 +126,17 @@ mdeck --help                 # Show help
 - `CARGO_REGISTRY_TOKEN` (in `crates-io` environment)
 - `HOMEBREW_TAP_TOKEN` (GitHub PAT with repo scope for `mklab-se/homebrew-tap`)
 
+### Pre-Release Checklist
+
+Before every release, verify these are up to date:
+
+- **`GALLERY.md`** — Re-export gallery slides (`mdeck export sample-presentations/gallery.md --output-dir media/gallery`) and verify all screenshots reflect current rendering. If new visualization types, layouts, or features have been added, add them to `sample-presentations/gallery.md` and regenerate.
+- **`README.md`** — Ensure features list, command reference, visualization table, and AI section are current. Check that gallery preview images look correct. The README is the first thing users see — it must provide an excellent experience.
+- **`CHANGELOG.md`** — Dated entry with all user-visible changes.
+- **`crates/mdeck/doc/mdeck-spec.md`** — Format spec reflects all current features.
+- **`sample-presentations/`** — Test presentations cover all features; dedicated test files exist for each visualization type.
+- **AI capabilities** — README documents AI image generation, style management, and diagram icon generation with clear examples.
+
 ## Code Style
 
 - Edition 2024, MSRV 1.85
@@ -169,6 +181,7 @@ mdeck --help                 # Show help
   - `test-diagram.md` — diagrams (auto-layout, grid, arrow types, reveal)
   - `test-image-generation.md` — AI image generation markers (image-generation, diagram icon prompts, @image-style)
   - `test-all-visualizations.md` — comprehensive test with every visualization type
+  - `gallery.md` — gallery presentation used to generate `GALLERY.md` screenshots (source for `media/gallery/` PNGs)
   When working on a specific visualization type, use its dedicated test file for faster iteration.
 - When fixing visual issues, export before and after to confirm the fix.
 
@@ -183,7 +196,8 @@ mdeck --help                 # Show help
 ### Documentation & Sample Presentations
 - **Before considering any task done, ensure all documentation and sample presentations are up to date.** This is a blocking requirement — incomplete docs or outdated samples mean the task is not finished.
 - **Review all documentation for accuracy before pushing or releasing:**
-  - `README.md` — features, quick start, badges
+  - `README.md` — features, quick start, badges, gallery preview images
+  - `GALLERY.md` — visual showcase with exported slide screenshots from `media/gallery/`
   - `CHANGELOG.md` — new entries for every user-visible change
   - `CLAUDE.md` — architecture, commands, patterns
   - `crates/mdeck/doc/mdeck-spec.md` — format specification (embedded in binary via `mdeck spec`)
