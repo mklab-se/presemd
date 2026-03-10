@@ -6,6 +6,7 @@ mod commands;
 mod config;
 mod incident_log;
 mod parser;
+mod prompt;
 mod render;
 mod theme;
 

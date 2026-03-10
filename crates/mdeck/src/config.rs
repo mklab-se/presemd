@@ -1,5 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 const FILENAME: &str = "config.yaml";
@@ -12,6 +13,12 @@ pub struct Config {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub routing: Option<RoutingWeightsConfig>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub styles: Option<BTreeMap<String, String>>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_styles: Option<BTreeMap<String, String>>,
 }
 
 fn default_one() -> f64 {
@@ -67,6 +74,12 @@ pub struct DefaultsConfig {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub start_mode: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_style: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_style: Option<String>,
 }
 
 impl Config {
@@ -106,6 +119,117 @@ impl Config {
         let contents = format!("# MDeck configuration — https://github.com/mklab-se/mdeck\n{yaml}");
         std::fs::write(&path, contents)?;
         Ok(path)
+    }
+
+    // ── Style helpers ──────────────────────────────────────────────────
+
+    pub fn add_style(&mut self, name: &str, description: &str) {
+        self.styles
+            .get_or_insert_with(BTreeMap::new)
+            .insert(name.to_string(), description.to_string());
+    }
+
+    pub fn remove_style(&mut self, name: &str) -> bool {
+        let removed = self
+            .styles
+            .as_mut()
+            .map(|m| m.remove(name).is_some())
+            .unwrap_or(false);
+        if removed {
+            // Clear default if it referenced this style
+            if let Some(ref defaults) = self.defaults {
+                if defaults.image_style.as_deref() == Some(name) {
+                    self.defaults.as_mut().unwrap().image_style = None;
+                }
+            }
+            // Clean up empty map
+            if self.styles.as_ref().is_some_and(|m| m.is_empty()) {
+                self.styles = None;
+            }
+        }
+        removed
+    }
+
+    pub fn clear_styles(&mut self) {
+        self.styles = None;
+        self.icon_styles = None;
+        if let Some(ref mut defaults) = self.defaults {
+            defaults.image_style = None;
+            defaults.icon_style = None;
+        }
+    }
+
+    pub fn get_style(&self, name: &str) -> Option<&str> {
+        self.styles.as_ref()?.get(name).map(|s| s.as_str())
+    }
+
+    pub fn list_styles(&self) -> Vec<(&str, &str)> {
+        self.styles
+            .as_ref()
+            .map(|m| m.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect())
+            .unwrap_or_default()
+    }
+
+    pub fn add_icon_style(&mut self, name: &str, description: &str) {
+        self.icon_styles
+            .get_or_insert_with(BTreeMap::new)
+            .insert(name.to_string(), description.to_string());
+    }
+
+    pub fn remove_icon_style(&mut self, name: &str) -> bool {
+        let removed = self
+            .icon_styles
+            .as_mut()
+            .map(|m| m.remove(name).is_some())
+            .unwrap_or(false);
+        if removed {
+            if let Some(ref defaults) = self.defaults {
+                if defaults.icon_style.as_deref() == Some(name) {
+                    self.defaults.as_mut().unwrap().icon_style = None;
+                }
+            }
+            if self.icon_styles.as_ref().is_some_and(|m| m.is_empty()) {
+                self.icon_styles = None;
+            }
+        }
+        removed
+    }
+
+    pub fn list_icon_styles(&self) -> Vec<(&str, &str)> {
+        self.icon_styles
+            .as_ref()
+            .map(|m| m.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect())
+            .unwrap_or_default()
+    }
+
+    pub fn get_icon_style(&self, name: &str) -> Option<&str> {
+        self.icon_styles.as_ref()?.get(name).map(|s| s.as_str())
+    }
+
+    /// Resolve the effective image style description.
+    /// Priority: defaults.image_style name → hardcoded default.
+    pub fn resolve_image_style(&self) -> &str {
+        if let Some(ref defaults) = self.defaults {
+            if let Some(ref name) = defaults.image_style {
+                if let Some(desc) = self.get_style(name) {
+                    return desc;
+                }
+            }
+        }
+        crate::prompt::DEFAULT_IMAGE_STYLE
+    }
+
+    /// Resolve the effective icon style description.
+    /// Priority: defaults.icon_style name → hardcoded default.
+    pub fn resolve_icon_style(&self) -> &str {
+        if let Some(ref defaults) = self.defaults {
+            if let Some(ref name) = defaults.icon_style {
+                if let Some(desc) = self.get_icon_style(name) {
+                    return desc;
+                }
+            }
+        }
+        crate::prompt::DEFAULT_ICON_STYLE
     }
 
     pub fn set(&mut self, key: &str, value: &str) -> Result<()> {

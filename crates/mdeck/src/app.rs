@@ -2307,6 +2307,28 @@ pub fn run(
             anyhow::bail!("No slides found in {}", file.display());
         }
 
+        // Warn about ungenerated AI images (first attempt only, not on hot-reload)
+        if attempt == 0 && !quiet {
+            let ungenerated = presentation
+                .slides
+                .iter()
+                .flat_map(|s| s.blocks.iter())
+                .filter(|b| matches!(b, parser::Block::Image { path, .. } if path == "image-generation"))
+                .count();
+            if ungenerated > 0 {
+                use colored::Colorize;
+                eprintln!(
+                    "{} This presentation contains {} ungenerated image(s).",
+                    "Warning:".yellow().bold(),
+                    ungenerated
+                );
+                eprintln!(
+                    "  Run `mdeck ai generate {}` to generate them first.\n",
+                    file.display()
+                );
+            }
+        }
+
         let title = presentation.meta.title.clone().unwrap_or_else(|| {
             format!(
                 "mdeck \u{2014} {}",

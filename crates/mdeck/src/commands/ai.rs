@@ -1,25 +1,35 @@
 //! AI feature management
 //!
-//! `mdeck ai`         — show status (chat + image generation)
-//! `mdeck ai test`    — test AI connection (chat and/or image generation)
-//! `mdeck ai enable`  — enable AI for mdeck
-//! `mdeck ai disable` — disable AI for mdeck
-//! `mdeck ai config`  — open config in editor
+//! `mdeck ai`                — show status (chat + image generation)
+//! `mdeck ai test`           — test AI connection (chat and/or image generation)
+//! `mdeck ai enable`         — enable AI for mdeck
+//! `mdeck ai disable`        — disable AI for mdeck
+//! `mdeck ai config`         — open config in editor
+//! `mdeck ai style ...`      — manage image styles
+//! `mdeck ai generate-image` — generate a single image from a prompt
+//! `mdeck ai generate`       — generate all AI images for a presentation
 
 use anyhow::Result;
 use colored::Colorize;
 
-use crate::cli::AiCommands;
+use crate::cli::{AiCommands, StyleCommands};
+use crate::config::{Config, DefaultsConfig};
+use crate::prompt;
 
 const APP_NAME: &str = "mdeck";
 
-pub async fn run(cmd: Option<AiCommands>) -> Result<()> {
+pub async fn run(cmd: Option<AiCommands>, quiet: bool) -> Result<()> {
     match cmd {
         None => status(),
         Some(AiCommands::Test { message }) => test(message).await,
         Some(AiCommands::Enable) => enable(),
         Some(AiCommands::Disable) => disable(),
         Some(AiCommands::Config) => open_config(),
+        Some(AiCommands::Style { command }) => run_style(command),
+        Some(AiCommands::GenerateImage(args)) => generate_image_cmd(args).await,
+        Some(AiCommands::Generate { file, force, style }) => {
+            crate::commands::generate::run(file, force, style, quiet).await
+        }
     }
 }
 
@@ -34,7 +44,7 @@ pub fn is_ai_active() -> bool {
 }
 
 /// Check if ailloy has a default node for a capability.
-fn has_capability(cap: &str) -> bool {
+pub fn has_capability(cap: &str) -> bool {
     ailloy::config::Config::load()
         .ok()
         .and_then(|c| c.default_node_for(cap).ok().map(|_| true))
@@ -154,31 +164,40 @@ async fn test(message: Option<String>) -> Result<()> {
     if test_image {
         println!("\n{}", "Testing image generation...".bold());
 
+        // Ask what kind of image to test
+        let image_type = if has_image {
+            let choices = vec!["Normal image", "Icon"];
+            inquire::Select::new("What type of image?", choices)
+                .prompt()
+                .unwrap_or("Normal image")
+        } else {
+            "Normal image"
+        };
+
+        let config = Config::load_or_default();
+
+        let test_prompt = if image_type == "Icon" {
+            let style = config.resolve_icon_style();
+            prompt::build_icon_prompt(style, "A database")
+        } else {
+            let style = config.resolve_image_style();
+            prompt::build_image_prompt(
+                style,
+                "A bunch of papers, presentation slides, and notes scattered on a messy wooden \
+                 desk \u{2014} a tribute to the old way of making presentations before mdeck.",
+                prompt::Orientation::Horizontal,
+            )
+        };
+
         let result: Result<ailloy::ImageResponse> = async {
             let client = ailloy::Client::for_capability("image")?;
-            client
-                .generate_image(
-                    "A Pixar-style 3D database icon against a transparent background. \
-                     The classic cylinder database shape we know from architecture diagrams, \
-                     but reimagined as a living, friendly character — as if a Pixar artist \
-                     drew it with personality and soul. It has subtle eyes or a gentle face \
-                     integrated into the design. Richly detailed with tiny discoveries: \
-                     miniature data rows visible through a translucent shell, tiny glowing \
-                     circuits, a small spider web in one corner, a micro garden growing on \
-                     top, a little door on the side. Warm lighting, soft shadows, the kind \
-                     of whimsical detail that rewards a closer look. No text, no labels.",
-                )
-                .await
+            client.generate_image(&test_prompt).await
         }
         .await;
 
         match result {
             Ok(response) => {
-                let ext = match response.format {
-                    ailloy::ImageFormat::Png => "png",
-                    ailloy::ImageFormat::Jpeg => "jpg",
-                    ailloy::ImageFormat::Webp => "webp",
-                };
+                let ext = image_ext(&response.format);
                 let path = std::path::PathBuf::from(format!("/tmp/mdeck-ai-test.{ext}"));
                 std::fs::write(&path, &response.data)?;
 
@@ -231,8 +250,283 @@ async fn test(message: Option<String>) -> Result<()> {
     }
 }
 
+// ── Style management ─────────────────────────────────────────────────────────
+
+fn run_style(cmd: StyleCommands) -> Result<()> {
+    match cmd {
+        StyleCommands::Add {
+            name,
+            description,
+            icon,
+        } => {
+            let mut config = Config::load_or_default();
+            if icon {
+                config.add_icon_style(&name, &description);
+                config.save()?;
+                println!(
+                    "{} Icon style {} added.",
+                    "✓".green().bold(),
+                    name.cyan().bold()
+                );
+            } else {
+                config.add_style(&name, &description);
+                config.save()?;
+                println!(
+                    "{} Image style {} added.",
+                    "✓".green().bold(),
+                    name.cyan().bold()
+                );
+            }
+            Ok(())
+        }
+        StyleCommands::Remove { name, icon } => {
+            let mut config = Config::load_or_default();
+            let removed = if icon {
+                config.remove_icon_style(&name)
+            } else {
+                config.remove_style(&name)
+            };
+            if removed {
+                config.save()?;
+                let kind = if icon { "Icon style" } else { "Image style" };
+                println!("{} {kind} {} removed.", "✓".green().bold(), name.cyan());
+            } else {
+                let kind = if icon { "icon style" } else { "image style" };
+                println!(
+                    "{} No {kind} named {} found.",
+                    "!".yellow().bold(),
+                    name.cyan()
+                );
+            }
+            Ok(())
+        }
+        StyleCommands::List => {
+            let config = Config::load_or_default();
+            let styles = config.list_styles();
+            let icon_styles = config.list_icon_styles();
+
+            if styles.is_empty() && icon_styles.is_empty() {
+                println!("No styles defined.");
+                println!(
+                    "  Use {} to add one.",
+                    format!("{APP_NAME} ai style add <name> <description>").cyan()
+                );
+                return Ok(());
+            }
+
+            if !styles.is_empty() {
+                println!("{}", "Image Styles".bold().underline());
+                let default_name = config
+                    .defaults
+                    .as_ref()
+                    .and_then(|d| d.image_style.as_deref());
+                for (name, desc) in &styles {
+                    let marker = if default_name == Some(name) {
+                        " (default)".green().to_string()
+                    } else {
+                        String::new()
+                    };
+                    println!("  {}{marker}", name.cyan().bold());
+                    println!("    {desc}");
+                }
+            }
+
+            if !icon_styles.is_empty() {
+                if !styles.is_empty() {
+                    println!();
+                }
+                println!("{}", "Icon Styles".bold().underline());
+                let default_name = config
+                    .defaults
+                    .as_ref()
+                    .and_then(|d| d.icon_style.as_deref());
+                for (name, desc) in &icon_styles {
+                    let marker = if default_name == Some(name) {
+                        " (default)".green().to_string()
+                    } else {
+                        String::new()
+                    };
+                    println!("  {}{marker}", name.cyan().bold());
+                    println!("    {desc}");
+                }
+            }
+
+            Ok(())
+        }
+        StyleCommands::Clear => {
+            let mut config = Config::load_or_default();
+            config.clear_styles();
+            config.save()?;
+            println!(
+                "{} All styles cleared and defaults reset.",
+                "✓".green().bold()
+            );
+            Ok(())
+        }
+        StyleCommands::SetDefault { name } => {
+            let mut config = Config::load_or_default();
+            if config.get_style(&name).is_none() {
+                anyhow::bail!(
+                    "No image style named '{}'. Use `{APP_NAME} ai style add` first.",
+                    name
+                );
+            }
+            config
+                .defaults
+                .get_or_insert_with(DefaultsConfig::default)
+                .image_style = Some(name.clone());
+            config.save()?;
+            println!(
+                "{} Default image style set to {}.",
+                "✓".green().bold(),
+                name.cyan().bold()
+            );
+            Ok(())
+        }
+        StyleCommands::SetIconDefault { name } => {
+            let mut config = Config::load_or_default();
+            if config.get_icon_style(&name).is_none() {
+                anyhow::bail!(
+                    "No icon style named '{}'. Use `{APP_NAME} ai style add --icon` first.",
+                    name
+                );
+            }
+            config
+                .defaults
+                .get_or_insert_with(DefaultsConfig::default)
+                .icon_style = Some(name.clone());
+            config.save()?;
+            println!(
+                "{} Default icon style set to {}.",
+                "✓".green().bold(),
+                name.cyan().bold()
+            );
+            Ok(())
+        }
+        StyleCommands::ShowDefaults => {
+            let config = Config::load_or_default();
+
+            println!("{}", "Default Image Style".bold().underline());
+            if let Some(ref name) = config.defaults.as_ref().and_then(|d| d.image_style.clone()) {
+                if let Some(desc) = config.get_style(name) {
+                    println!("  {} {}", "Name:".bold(), name.cyan());
+                    println!("  {desc}");
+                } else {
+                    println!(
+                        "  {} (configured as '{}' but style not found, using hardcoded)",
+                        "!".yellow().bold(),
+                        name
+                    );
+                    println!("  {}", prompt::DEFAULT_IMAGE_STYLE.dimmed());
+                }
+            } else {
+                println!("  {} (hardcoded)", "(none set)".dimmed());
+                println!("  {}", prompt::DEFAULT_IMAGE_STYLE.dimmed());
+            }
+
+            println!("\n{}", "Default Icon Style".bold().underline());
+            if let Some(ref name) = config.defaults.as_ref().and_then(|d| d.icon_style.clone()) {
+                if let Some(desc) = config.get_icon_style(name) {
+                    println!("  {} {}", "Name:".bold(), name.cyan());
+                    println!("  {desc}");
+                } else {
+                    println!(
+                        "  {} (configured as '{}' but style not found, using hardcoded)",
+                        "!".yellow().bold(),
+                        name
+                    );
+                    println!("  {}", prompt::DEFAULT_ICON_STYLE.dimmed());
+                }
+            } else {
+                println!("  {} (hardcoded)", "(none set)".dimmed());
+                println!("  {}", prompt::DEFAULT_ICON_STYLE.dimmed());
+            }
+
+            Ok(())
+        }
+    }
+}
+
+// ── Ad-hoc image generation ──────────────────────────────────────────────────
+
+async fn generate_image_cmd(args: crate::cli::GenerateImageArgs) -> Result<()> {
+    if !has_capability("image") {
+        anyhow::bail!(
+            "Image generation not configured. Run `{APP_NAME} ai config` to set up an image provider."
+        );
+    }
+
+    let config = Config::load_or_default();
+
+    // Resolve style: explicit --style (name lookup or literal) > config default > hardcoded
+    let style = if let Some(ref s) = args.style {
+        if args.icon {
+            config.get_icon_style(s).unwrap_or(s).to_string()
+        } else {
+            config.get_style(s).unwrap_or(s).to_string()
+        }
+    } else if args.icon {
+        config.resolve_icon_style().to_string()
+    } else {
+        config.resolve_image_style().to_string()
+    };
+
+    let combined_prompt = if args.icon {
+        prompt::build_icon_prompt(&style, &args.prompt)
+    } else {
+        prompt::build_image_prompt(&style, &args.prompt, prompt::Orientation::Horizontal)
+    };
+
+    println!("Generating image...");
+
+    let client = ailloy::Client::for_capability("image")?;
+    let response = client.generate_image(&combined_prompt).await?;
+
+    let ext = image_ext(&response.format);
+
+    let path = if let Some(ref output) = args.output {
+        output.clone()
+    } else {
+        std::path::PathBuf::from(format!("/tmp/mdeck-generated.{ext}"))
+    };
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, &response.data)?;
+
+    println!(
+        "{} Generated {}x{} {} image",
+        "✓".green().bold(),
+        response.width,
+        response.height,
+        ext.to_uppercase()
+    );
+    if let Some(ref revised) = response.revised_prompt {
+        println!("  Revised prompt: {}", revised.dimmed());
+    }
+    println!();
+    display_image_result(&path);
+
+    if args.output.is_none() {
+        offer_cleanup(&path);
+    }
+
+    Ok(())
+}
+
+// ── Shared helpers ───────────────────────────────────────────────────────────
+
+pub fn image_ext(format: &ailloy::ImageFormat) -> &'static str {
+    match format {
+        ailloy::ImageFormat::Png => "png",
+        ailloy::ImageFormat::Jpeg => "jpg",
+        ailloy::ImageFormat::Webp => "webp",
+    }
+}
+
 /// Display the generated test image — inline if the terminal supports it, plus a hyperlink.
-fn display_image_result(path: &std::path::Path) {
+pub fn display_image_result(path: &std::path::Path) {
     use std::io::Write;
 
     let display_path = path.display();

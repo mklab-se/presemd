@@ -58,8 +58,10 @@ date: 2026-02-28
 | `@theme`      | string | `"light"` | Global theme: `"light"`, `"dark"`, or custom name  |
 | `@transition` | string | `"slide"` | Default transition: `"fade"`, `"slide"`, `"none"`  |
 | `@aspect`     | string | `"16:9"`  | Aspect ratio: `"16:9"`, `"4:3"`, `"16:10"`        |
-| `@code-theme` | string | (theme)   | Syntax highlighting theme for code blocks          |
-| `@footer`     | string | none      | Text shown in footer of every slide                |
+| `@code-theme`  | string | (theme)   | Syntax highlighting theme for code blocks          |
+| `@footer`      | string | none      | Text shown in footer of every slide                |
+| `@image-style` | string | none      | Default AI image generation style (name or description) |
+| `@icon-style`  | string | none      | Default AI icon generation style (name or description)  |
 
 **Parser rule:** If the document starts with a line that is exactly `---`, begin parsing YAML until a closing `---` line. If no closing `---` is found before invalid YAML, treat the opening `---` as a slide separator instead (graceful recovery).
 
@@ -325,6 +327,25 @@ Sizing directives can be placed in the alt text with the `@` prefix:
 
 When rendered in a standard markdown viewer, the `@` directives appear as visible alt text, which is acceptable degradation.
 
+#### AI Image Generation
+
+Use `image-generation` as the image path to mark an image for AI generation:
+
+```markdown
+![A futuristic cityscape at sunset](image-generation)
+```
+
+The alt text serves as the image prompt. Leave it empty for auto-prompting from slide context (requires chat capability):
+
+```markdown
+![](image-generation)
+```
+
+Run `mdeck ai generate <file.md>` to generate all marked images. The command:
+- Detects orientation automatically (horizontal for full-slide, vertical for side-panel layouts)
+- Applies the configured image style (via `@image-style` frontmatter, config default, or hardcoded fallback)
+- Rewrites the markdown file, replacing `image-generation` with actual file paths
+
 ### 5.5 Code blocks
 
 Standard fenced code blocks with optional language and line highlighting:
@@ -536,7 +557,16 @@ In this example:
 | `icon`  | icon name from theme icon set   | `box`         | Visual icon           |
 | `pos`   | `x,y` (integer grid coords)     | auto-layout   | Position hint         |
 | `label` | string                          | component name| Display label         |
-| `style` | `primary`, `secondary`, `muted` | `primary`     | Visual emphasis       |
+| `style`  | `primary`, `secondary`, `muted` | `primary`     | Visual emphasis       |
+| `prompt` | quoted string                   | none          | AI icon generation prompt |
+
+Use `icon: generate-image` with a `prompt` to mark a node for AI icon generation:
+
+```
+- Gateway (icon: generate-image, prompt: "An API gateway router icon", pos: 1,2)
+```
+
+Run `mdeck ai generate <file.md>` to generate all marked icons. The generated icon replaces `generate-image` with the actual filename.
 
 If no components are explicitly declared, they are inferred from relationship lines. Each unique name becomes a component with default icon and auto-positioned layout.
 

@@ -56,6 +56,7 @@ crates/
         layouts/     # Layout strategies (title, section, bullet, code, content, two_column, quote, image_slide)
         image_cache.rs # Async image loading and caching
       theme.rs       # Theme definitions (light, dark, solarized, etc.)
+      prompt.rs      # AI prompt construction helpers (image/icon style + orientation)
     doc/
       mdeck-spec.md  # Markdown format specification (included via include_str!)
 ```
@@ -74,6 +75,15 @@ mdeck ai test                # Test AI integration
 mdeck ai enable              # Enable AI features
 mdeck ai disable             # Disable AI features
 mdeck ai config              # Open AI config in editor
+mdeck ai generate <file.md>  # Generate all AI images in a presentation
+mdeck ai generate-image --prompt "..." [--icon] [--output path] [--style name]
+mdeck ai style add <name> <desc> [--icon]  # Add named style
+mdeck ai style remove <name> [--icon]      # Remove named style
+mdeck ai style list          # List all styles
+mdeck ai style clear         # Remove all styles
+mdeck ai style set-default <name>       # Set default image style
+mdeck ai style set-icon-default <name>  # Set default icon style
+mdeck ai style show-defaults            # Show current defaults
 mdeck config show            # Display configuration
 mdeck config set <key> <val> # Set config value (defaults.theme, defaults.transition, defaults.aspect)
 mdeck export <file.md>       # Export slides as PNG images (1920x1080 default)
@@ -157,6 +167,7 @@ mdeck --help                 # Show help
   - `test-viz-wordcloud.md` — word clouds (large, small, progressive reveal)
   - `test-image-layouts.md` — image split layouts (bullet+image, code+image, quote+image, content+image)
   - `test-diagram.md` — diagrams (auto-layout, grid, arrow types, reveal)
+  - `test-image-generation.md` — AI image generation markers (image-generation, diagram icon prompts, @image-style)
   - `test-all-visualizations.md` — comprehensive test with every visualization type
   When working on a specific visualization type, use its dedicated test file for faster iteration.
 - When fixing visual issues, export before and after to confirm the fix.

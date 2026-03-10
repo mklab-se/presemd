@@ -21,6 +21,8 @@ pub struct PresentationMeta {
     pub aspect: Option<String>,
     pub code_theme: Option<String>,
     pub footer: Option<String>,
+    pub image_style: Option<String>,
+    pub icon_style: Option<String>,
 }
 
 #[derive(Debug, Clone)]

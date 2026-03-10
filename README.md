@@ -60,6 +60,9 @@ mdeck export slides.md                 # Export slides as PNG images
 mdeck ai                               # Show AI status
 mdeck ai test                          # Test AI integration
 mdeck ai config                        # Open AI config in editor
+mdeck ai generate slides.md            # Generate AI images for a presentation
+mdeck ai generate-image --prompt "..." # Generate a single image
+mdeck ai style list                    # List defined image styles
 mdeck config show                      # Display current settings
 mdeck config set defaults.theme dark   # Set a config value
 mdeck completion zsh                   # Generate shell completions

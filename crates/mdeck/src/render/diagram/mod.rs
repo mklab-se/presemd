@@ -207,6 +207,7 @@ struct DiagramNode {
     label: String,
     icon: String,
     grid_pos: Option<(u32, u32)>,
+    prompt: Option<String>,
     reveal: DiagramReveal,
     parse_order: usize,
 }
@@ -908,19 +909,42 @@ fn draw_routed_edge(
 }
 // ─── Diagram parser ──────────────────────────────────────────────────────────
 
-/// Parse parenthetical metadata like `(icon: database, pos: 1,2)`.
-/// Returns (icon, grid_pos) and the line content without the metadata.
-fn parse_metadata(s: &str) -> (&str, String, Option<(u32, u32)>) {
+/// Parsed metadata from parenthetical notation like `(icon: database, pos: 1,2, prompt: "...")`.
+struct NodeMetadata<'a> {
+    before: &'a str,
+    icon: String,
+    grid_pos: Option<(u32, u32)>,
+    prompt: Option<String>,
+}
+
+/// Parse parenthetical metadata like `(icon: database, pos: 1,2, prompt: "...")`.
+/// Returns the line content without the metadata and extracted fields.
+fn parse_node_metadata(s: &str) -> NodeMetadata<'_> {
     let trimmed = s.trim_end();
     if !trimmed.ends_with(')') {
-        return (trimmed, String::new(), None);
+        return NodeMetadata {
+            before: trimmed,
+            icon: String::new(),
+            grid_pos: None,
+            prompt: None,
+        };
     }
     let Some(paren_start) = trimmed.rfind('(') else {
-        return (trimmed, String::new(), None);
+        return NodeMetadata {
+            before: trimmed,
+            icon: String::new(),
+            grid_pos: None,
+            prompt: None,
+        };
     };
     // Only parse if there's whitespace before the paren
     if paren_start == 0 || trimmed.as_bytes()[paren_start - 1] != b' ' {
-        return (trimmed, String::new(), None);
+        return NodeMetadata {
+            before: trimmed,
+            icon: String::new(),
+            grid_pos: None,
+            prompt: None,
+        };
     }
 
     let before = trimmed[..paren_start].trim_end();
@@ -928,6 +952,10 @@ fn parse_metadata(s: &str) -> (&str, String, Option<(u32, u32)>) {
 
     let mut icon = String::new();
     let mut grid_pos = None;
+    let mut prompt = None;
+
+    // Extract quoted prompt first (it may contain commas)
+    let meta_str = extract_prompt(meta_str, &mut prompt);
 
     for part in meta_str.split(',') {
         let part = part.trim();
@@ -961,7 +989,53 @@ fn parse_metadata(s: &str) -> (&str, String, Option<(u32, u32)>) {
         }
     }
 
-    (before, icon, grid_pos)
+    NodeMetadata {
+        before,
+        icon,
+        grid_pos,
+        prompt,
+    }
+}
+
+/// Extract a `prompt: "..."` or `prompt: '...'` value from the metadata string,
+/// returning the remainder with the prompt portion removed.
+fn extract_prompt(meta_str: &str, prompt: &mut Option<String>) -> String {
+    // Look for prompt: followed by a quoted string
+    let prefix = if let Some(idx) = meta_str.find("prompt:") {
+        idx
+    } else if let Some(idx) = meta_str.find("prompt :") {
+        idx
+    } else {
+        return meta_str.to_string();
+    };
+
+    let after_key = &meta_str[prefix..];
+    let after_colon = after_key
+        .strip_prefix("prompt:")
+        .or_else(|| after_key.strip_prefix("prompt :"))
+        .unwrap_or(after_key);
+    let after_colon = after_colon.trim_start();
+
+    let (quote_char, rest) = if let Some(stripped) = after_colon.strip_prefix('"') {
+        ('"', stripped)
+    } else if let Some(stripped) = after_colon.strip_prefix('\'') {
+        ('\'', stripped)
+    } else {
+        return meta_str.to_string();
+    };
+
+    if let Some(end) = rest.find(quote_char) {
+        *prompt = Some(rest[..end].to_string());
+        // Remove the prompt portion from the metadata string
+        let prompt_end = prefix + "prompt:".len() + (after_colon.len() - rest.len()) + end + 1;
+        let mut result = meta_str[..prefix].to_string();
+        if prompt_end < meta_str.len() {
+            result.push_str(&meta_str[prompt_end..]);
+        }
+        result
+    } else {
+        meta_str.to_string()
+    }
 }
 
 /// Detect arrow type and position in a line. Returns (arrow_pos, arrow_len, ArrowKind).
@@ -1028,8 +1102,12 @@ fn parse_diagram(content: &str) -> (Vec<DiagramNode>, Vec<DiagramEdge>, DiagramS
             continue;
         }
 
-        // Parse and strip trailing metadata (icon, pos)
-        let (trimmed, meta_icon, meta_pos) = parse_metadata(trimmed);
+        // Parse and strip trailing metadata (icon, pos, prompt)
+        let meta = parse_node_metadata(trimmed);
+        let trimmed = meta.before;
+        let meta_icon = meta.icon;
+        let meta_pos = meta.grid_pos;
+        let meta_prompt = meta.prompt;
 
         if let Some((arrow_pos, arrow_len, arrow_kind)) = detect_arrow(trimmed) {
             let from = trimmed[..arrow_pos].trim().to_string();
@@ -1052,6 +1130,7 @@ fn parse_diagram(content: &str) -> (Vec<DiagramNode>, Vec<DiagramEdge>, DiagramS
                         label: node_name.clone(),
                         icon: String::new(),
                         grid_pos: None,
+                        prompt: None,
                         reveal: DiagramReveal::Static,
                         parse_order: 0,
                     });
@@ -1080,6 +1159,9 @@ fn parse_diagram(content: &str) -> (Vec<DiagramNode>, Vec<DiagramEdge>, DiagramS
                 if meta_pos.is_some() {
                     nodes[idx].grid_pos = meta_pos;
                 }
+                if meta_prompt.is_some() {
+                    nodes[idx].prompt = meta_prompt.clone();
+                }
                 nodes[idx].parse_order = parse_order_counter;
             } else {
                 seen_nodes.insert(name.clone(), nodes.len());
@@ -1088,6 +1170,7 @@ fn parse_diagram(content: &str) -> (Vec<DiagramNode>, Vec<DiagramEdge>, DiagramS
                     label,
                     icon: meta_icon.clone(),
                     grid_pos: meta_pos,
+                    prompt: meta_prompt.clone(),
                     reveal,
                     parse_order: parse_order_counter,
                 });
@@ -1104,6 +1187,9 @@ fn parse_diagram(content: &str) -> (Vec<DiagramNode>, Vec<DiagramEdge>, DiagramS
                     if meta_pos.is_some() {
                         nodes[idx].grid_pos = meta_pos;
                     }
+                    if meta_prompt.is_some() {
+                        nodes[idx].prompt = meta_prompt.clone();
+                    }
                     nodes[idx].parse_order = parse_order_counter;
                 } else {
                     seen_nodes.insert(name.clone(), nodes.len());
@@ -1112,6 +1198,7 @@ fn parse_diagram(content: &str) -> (Vec<DiagramNode>, Vec<DiagramEdge>, DiagramS
                         label: name,
                         icon: meta_icon.clone(),
                         grid_pos: meta_pos,
+                        prompt: meta_prompt.clone(),
                         reveal,
                         parse_order: parse_order_counter,
                     });
@@ -2017,10 +2104,16 @@ pub fn draw_diagram_sized(
 
         let has_image = if !icon_path.is_empty() {
             if let Some(texture) = image_cache.get_or_load(ui, &icon_path) {
-                // Draw the icon image
-                let img_size = icon_size * 0.85;
-                let img_rect =
-                    egui::Rect::from_center_size(icon_center, egui::vec2(img_size, img_size));
+                // Draw the icon image, preserving aspect ratio
+                let max_size = icon_size * 0.85;
+                let tex_size = texture.size_vec2();
+                let aspect = tex_size.x / tex_size.y.max(1.0);
+                let (w, h) = if aspect >= 1.0 {
+                    (max_size, max_size / aspect)
+                } else {
+                    (max_size * aspect, max_size)
+                };
+                let img_rect = egui::Rect::from_center_size(icon_center, egui::vec2(w, h));
                 let tint = Theme::with_opacity(Color32::WHITE, opacity);
                 painter.image(
                     texture.id(),
@@ -2322,10 +2415,22 @@ mod diagram_tests {
 
     #[test]
     fn test_parse_metadata() {
-        let (before, icon, pos) = parse_metadata("Server (icon: server, pos: 2, 3)");
-        assert_eq!(before, "Server");
-        assert_eq!(icon, "server");
-        assert_eq!(pos, Some((2, 3)));
+        let meta = parse_node_metadata("Server (icon: server, pos: 2, 3)");
+        assert_eq!(meta.before, "Server");
+        assert_eq!(meta.icon, "server");
+        assert_eq!(meta.grid_pos, Some((2, 3)));
+        assert!(meta.prompt.is_none());
+    }
+
+    #[test]
+    fn test_parse_metadata_with_prompt() {
+        let meta = parse_node_metadata(
+            "Gateway (icon: generate-image, prompt: \"An API gateway\", pos: 1, 1)",
+        );
+        assert_eq!(meta.before, "Gateway");
+        assert_eq!(meta.icon, "generate-image");
+        assert_eq!(meta.grid_pos, Some((1, 1)));
+        assert_eq!(meta.prompt.as_deref(), Some("An API gateway"));
     }
 
     #[test]

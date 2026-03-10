@@ -1,4 +1,4 @@
-use clap::{ArgAction, Parser, Subcommand, ValueEnum};
+use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -112,6 +112,78 @@ pub enum AiCommands {
     Disable,
     /// Open AI configuration file in your editor
     Config,
+    /// Manage image styles
+    Style {
+        #[command(subcommand)]
+        command: StyleCommands,
+    },
+    /// Generate a single image from a prompt
+    GenerateImage(GenerateImageArgs),
+    /// Generate AI images for a presentation
+    Generate {
+        /// Markdown file to process
+        file: PathBuf,
+        /// Skip confirmation prompt
+        #[arg(long)]
+        force: bool,
+        /// Override the image style
+        #[arg(long)]
+        style: Option<String>,
+    },
+}
+
+#[derive(Args)]
+pub struct GenerateImageArgs {
+    /// Image prompt
+    #[arg(long)]
+    pub prompt: String,
+    /// Named style or literal description to apply
+    #[arg(long)]
+    pub style: Option<String>,
+    /// Output file path
+    #[arg(long)]
+    pub output: Option<PathBuf>,
+    /// Generate as icon (square, transparent bg)
+    #[arg(long)]
+    pub icon: bool,
+}
+
+#[derive(Subcommand)]
+pub enum StyleCommands {
+    /// Add or update a named image style
+    Add {
+        /// Style name
+        name: String,
+        /// Style description
+        description: String,
+        /// Add as icon style instead of image style
+        #[arg(long)]
+        icon: bool,
+    },
+    /// Remove a named style
+    Remove {
+        /// Style name
+        name: String,
+        /// Remove from icon styles instead of image styles
+        #[arg(long)]
+        icon: bool,
+    },
+    /// List all defined styles
+    List,
+    /// Remove all styles and reset defaults
+    Clear,
+    /// Set the default image style (used when no style is specified)
+    SetDefault {
+        /// Name of an existing style
+        name: String,
+    },
+    /// Set the default icon style (used for diagram icon generation)
+    SetIconDefault {
+        /// Name of an existing icon style
+        name: String,
+    },
+    /// Show the current default styles (including hardcoded fallbacks)
+    ShowDefaults,
 }
 
 #[derive(Subcommand)]
@@ -144,7 +216,7 @@ impl Cli {
                 let rt = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()?;
-                rt.block_on(crate::commands::ai::run(command))
+                rt.block_on(crate::commands::ai::run(command, self.quiet))
             }
             Some(Commands::Config { command }) => crate::commands::config::run(command),
             Some(Commands::Completion { shell }) => {

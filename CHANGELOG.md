@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **AI image generation (`mdeck ai generate`):** Scan a presentation for `![prompt](image-generation)` markers and diagram nodes with `icon: generate-image`, then generate all images in one command. Automatically detects orientation (horizontal for full-slide, vertical for side-panel layouts, square for icons) and rewrites the markdown with actual file paths.
+- **Style management (`mdeck ai style`):** Define named image and icon styles in config, set defaults, and override per-presentation via `@image-style` / `@icon-style` frontmatter directives. Hardcoded defaults ensure good results out of the box.
+- **Ad-hoc image generation (`mdeck ai generate-image`):** Generate a single image from a prompt with `--prompt`, `--style`, `--output`, and `--icon` flags.
+- **Diagram prompt metadata:** Diagram nodes now support `prompt: "..."` in parenthetical metadata for AI icon generation (e.g., `Gateway (icon: generate-image, prompt: "An API gateway")`).
+- **Diagram icon aspect ratio preservation:** Non-square icon images are now rendered with correct aspect ratio instead of being stretched.
+- **Ungenerated image warning:** Launching a presentation with `image-generation` markers prints a terminal warning suggesting `mdeck ai generate`.
+- **Enhanced `mdeck ai test`:** Image generation test now lets you choose between normal image and icon, using the configured default styles.
+
 ## [0.11.2] - 2026-03-10
 
 ### Added

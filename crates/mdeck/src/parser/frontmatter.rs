@@ -75,6 +75,8 @@ fn parse_frontmatter(yaml_str: &str) -> PresentationMeta {
         aspect: get_string(&map, "@aspect"),
         code_theme: get_string(&map, "@code-theme"),
         footer: get_string(&map, "@footer"),
+        image_style: get_string(&map, "@image-style"),
+        icon_style: get_string(&map, "@icon-style"),
     }
 }
 
@@ -102,6 +104,8 @@ fn parse_frontmatter_manual(yaml_str: &str) -> PresentationMeta {
                 "@aspect" => meta.aspect = Some(value.to_string()),
                 "@code-theme" => meta.code_theme = Some(value.to_string()),
                 "@footer" => meta.footer = Some(value.to_string()),
+                "@image-style" => meta.image_style = Some(value.to_string()),
+                "@icon-style" => meta.icon_style = Some(value.to_string()),
                 _ => {}
             }
         }
@@ -140,6 +144,16 @@ mod tests {
         assert_eq!(meta.transition.as_deref(), Some("fade"));
         assert_eq!(meta.aspect.as_deref(), Some("16:9"));
         assert_eq!(meta.footer.as_deref(), Some("footer text"));
+        assert_eq!(body.trim(), "Body");
+    }
+
+    #[test]
+    fn test_frontmatter_image_style() {
+        let content = "---\ntitle: \"Test\"\n@image-style: Pixar\n@icon-style: minimal\n---\nBody";
+        let (meta, body) = extract(content);
+        assert_eq!(meta.title.as_deref(), Some("Test"));
+        assert_eq!(meta.image_style.as_deref(), Some("Pixar"));
+        assert_eq!(meta.icon_style.as_deref(), Some("minimal"));
         assert_eq!(body.trim(), "Body");
     }
 
