@@ -116,6 +116,9 @@ pub enum Block {
     OrgChart {
         content: String,
     },
+    GanttChart {
+        content: String,
+    },
     ColumnSeparator,
 }
 
@@ -256,7 +259,8 @@ fn classify_layout(directives: &[Directive], blocks: &[Block]) -> Layout {
             | Block::VennDiagram { .. }
             | Block::ProgressBars { .. }
             | Block::ScatterPlot { .. }
-            | Block::OrgChart { .. } => visualizations += 1,
+            | Block::OrgChart { .. }
+            | Block::GanttChart { .. } => visualizations += 1,
             Block::Table { .. } => tables += 1,
             Block::ColumnSeparator => column_separators += 1,
             Block::HorizontalRule => {}
@@ -373,7 +377,8 @@ pub fn compute_max_steps(blocks: &[Block]) -> usize {
             | Block::VennDiagram { content }
             | Block::ProgressBars { content }
             | Block::ScatterPlot { content }
-            | Block::OrgChart { content } => {
+            | Block::OrgChart { content }
+            | Block::GanttChart { content } => {
                 crate::render::visualizations::count_viz_steps(content)
             }
             _ => 0,

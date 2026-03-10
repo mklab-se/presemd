@@ -77,6 +77,15 @@ VISUALIZATIONS (fenced code blocks with @ language tag)
   @radar         Radar chart (# axes: A, B, C)
   @venn          Venn diagram (- Set: item1, item2)
   @orgchart      Org chart (- Name (parent: Parent))
+  @gantt         Gantt chart (- Task: date, duration, after Dep; # labels: inside)
+
+GANTT CHART DURATION FORMATS
+  Nd             Calendar days (e.g. 10d)
+  Nwd            Working days, Mon-Fri (e.g. 5wd)
+  Nw             Weeks (e.g. 2w)
+  Nm             Months (e.g. 3m)
+  after Task     Start when Task ends
+  after Task+Nd  Start N days after Task ends
 
 CHART AXIS LABELS
   # x-label: text    Horizontal axis label (centered below)

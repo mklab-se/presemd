@@ -514,7 +514,8 @@ pub fn measure_single_block_height(
         | Block::VennDiagram { .. }
         | Block::ProgressBars { .. }
         | Block::ScatterPlot { .. }
-        | Block::OrgChart { .. } => 500.0 * scale, // visualizations fill available space
+        | Block::OrgChart { .. }
+        | Block::GanttChart { .. } => 500.0 * scale, // visualizations fill available space
         _ => theme.body_size * scale * 1.5,
     }
 }
@@ -789,6 +790,20 @@ pub fn draw_block(
             None,
             scale,
         ),
+        Block::GanttChart { content } => {
+            crate::render::visualizations::gantt_chart::draw_gantt_chart(
+                ui,
+                content,
+                theme,
+                pos,
+                max_width,
+                0.0,
+                opacity,
+                reveal_step,
+                None,
+                scale,
+            )
+        }
         Block::HorizontalRule => {
             let color = Theme::with_opacity(theme.accent, opacity * 0.5);
             let y = pos.y + 10.0 * scale;

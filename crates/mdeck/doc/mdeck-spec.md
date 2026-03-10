@@ -1218,3 +1218,48 @@ Hierarchical org chart with parent-child relationships.
 **Data format:** `- Name` or `- Name (parent: ParentName)`
 
 The root node has no `parent` attribute. The chart is drawn as a tree with connecting lines.
+
+### 14.16 Gantt Chart (`@gantt`)
+
+Project timeline with tasks, durations, dependencies, and automatic time scaling.
+
+````markdown
+```@gantt
+# title: Project Plan
+- Research: 2024-01-15, 10d
+- Design: 5d, after Research
+- Frontend: 15d, after Design
+- Backend: 15d, after Design
+- Testing: 5wd, after Frontend
+- Launch: 2d, after Testing + 3d
+```
+````
+
+**Task specification:** Each task line has the format `- Task Name: spec1, spec2, ...` where specs can be:
+
+| Spec | Description |
+|------|-------------|
+| `YYYY-MM-DD` | Absolute date (start or end) |
+| `Nd` | Duration in calendar days |
+| `Nwd` | Duration in working days (Mon-Fri) |
+| `Nw` | Duration in weeks |
+| `Nm` | Duration in months (~30 days) |
+| `after TaskName` | Start when TaskName ends |
+| `after TaskName + Nd` | Start N days after TaskName ends |
+
+**Valid combinations:**
+- Start date + end date: `2024-01-01, 2024-02-01`
+- Start date + duration: `2024-01-01, 10d`
+- Duration + dependency: `5d, after Research`
+- Duration + dependency with delay: `3wd, after Design + 2d`
+
+**Directives:**
+- `# title: text` — Chart title displayed above the bars
+- `# labels: inside` — Render task names inside the bars instead of in a left column. The left label area is removed, giving the full width to the timeline. When a bar is too short for the name, it falls back to showing the name to the right of the bar.
+
+**Timeline auto-scaling:** The time axis automatically selects the appropriate unit:
+- Days (for timelines up to ~3 weeks)
+- Weeks (for timelines up to ~4 months)
+- Months (for longer timelines)
+
+Dependencies are shown as connector arrows between tasks.

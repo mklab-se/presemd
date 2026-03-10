@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.1] - 2026-03-10
+
+### Added
+
+- **Gantt chart visualization (`@gantt`):** Project timelines with tasks, durations, dependencies, and automatic time scaling. Supports absolute dates (`YYYY-MM-DD`), calendar days (`Nd`), working days (`Nwd`), weeks (`Nw`), months (`Nm`), and dependency chains (`after Task`, `after Task + 3d`). Timeline auto-scales between days, weeks, and months based on project span.
+- **Gantt weekend shading:** Non-working days (Saturday/Sunday) are shown as subtle gray columns when the timeline is at day-level scale.
+- **Gantt labels inside bars (`# labels: inside`):** Option to render task names inside their bars instead of in a left column, giving the full width to the timeline.
+
+### Removed
+
+- **`architecture-diagrams.md`:** Removed redundant standalone diagram documentation. All specifications are now consolidated in `mdeck-spec.md`.
+
+## [0.11.0] - 2026-03-10
+
+### Added
+
+- **Ten new visualization types:** Donut chart (`@donutchart`), line chart (`@linechart`), scatter plot (`@scatter`), stacked bar (`@stackedbar`), funnel chart (`@funnel`), KPI cards (`@kpi`), progress bars (`@progress`), radar chart (`@radar`), Venn diagram (`@venn`), org chart (`@orgchart`)
+- **Chart axis labels:** `# x-label:` and `# y-label:` directives for bar chart, line chart, scatter plot, and stacked bar
+- **Word cloud improvements:** Elliptical cloud shape, non-linear font size contrast (`t^1.5`), rotation restricted to smallest words only
+- **Format specification command:** `mdeck spec` prints the full format spec, `mdeck spec --short` prints a quick reference card
+- **Per-visualization test files:** Individual test presentations for each visualization type
+- **MDeck intro presentation:** `introducing-mdeck.md` — a real presentation about MDeck itself
+
+### Changed
+
+- **Reorganized sample presentations:** Removed redundant files, added comprehensive `test-all-visualizations.md`
+
 ## [0.10.0] - 2026-03-10
 
 ### Added

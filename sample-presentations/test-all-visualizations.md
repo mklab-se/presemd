@@ -263,3 +263,15 @@ A showcase of every visualization type in MDeck
 - CTO -> VP Product
 - CFO -> Controller
 ```
+
+
+## Gantt Chart
+
+```@gantt
+- Planning: 2024-03-01, 5d
+- Design: 8d, after Planning
+- Frontend: 15d, after Design
+- Backend: 15d, after Design
+- QA: 10d, after Frontend
+- Release: 2d, after QA
+```

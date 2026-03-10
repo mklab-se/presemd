@@ -146,6 +146,7 @@ mdeck --help                 # Show help
   - `test-viz-kpi.md` — KPI cards (basic, many metrics, reveal)
   - `test-viz-linechart.md` — line charts (single/multi series, axis labels)
   - `test-viz-orgchart.md` — org charts (basic, deep hierarchy, reveal)
+  - `test-viz-gantt.md` — gantt charts (basic, dependencies, delays, long timeline, many tasks, reveal)
   - `test-viz-piechart.md` — pie charts (basic, many slices, reveal)
   - `test-viz-progress.md` — progress bars (basic, many bars, reveal)
   - `test-viz-radar.md` — radar charts (single/multi series, reveal)
