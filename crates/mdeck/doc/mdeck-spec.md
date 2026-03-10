@@ -919,6 +919,7 @@ NAME         = /[A-Za-z][A-Za-z0-9 ]*/
 ```
 classify(elements) -> Layout:
     if has(DIAGRAM):           Diagram
+    if has(VISUALIZATION):     Visualization
     if is_title_pattern():     Title
     if is_section_divider():   Section
     if single_image():         Image
@@ -928,3 +929,292 @@ classify(elements) -> Layout:
     if heading_and_list():     Bullets
     else:                      Content
 ```
+
+---
+
+## 14. Visualization Syntax
+
+MDeck supports data visualizations as fenced code blocks with `@` language tags. Each visualization type has its own format for data entry and optional directives.
+
+### 14.1 Common Features
+
+All visualization types share these features:
+
+**Reveal markers:** The same `-`, `+`, `*` markers from Section 6 control progressive reveal of data items.
+
+**Comment directives:** Lines starting with `#` inside visualization blocks are parsed as directives (e.g., `# orientation: horizontal`). Use them to configure the visualization.
+
+**Axis labels:** Chart types with axes support `# x-label:` and `# y-label:` directives. The Y-axis label is rendered rotated 90° counter-clockwise.
+
+**Automatic scaling:** All visualizations scale proportionally to the available slide area. Grid lines use "nice" round numbers (1, 2, 5, 10, 20, 25, 50, 100, ...).
+
+### 14.2 Bar Chart (`@barchart`)
+
+Vertical or horizontal bar chart with category labels and values.
+
+````markdown
+```@barchart
+# orientation: vertical
+# x-label: Programming Language
+# y-label: Popularity Index
+- JavaScript: 65
+- Python: 48
++ TypeScript: 38
+* Rust: 22
+```
+````
+
+**Directives:**
+
+| Directive       | Values                      | Default    | Description                |
+|-----------------|-----------------------------|------------|----------------------------|
+| `orientation`   | `vertical`, `horizontal`    | `vertical` | Bar direction              |
+| `x-label`       | string                      | none       | Label for the X axis       |
+| `y-label`       | string                      | Label for the Y axis (rotated 90° CCW) |
+
+**Data format:** `- Label: value` or `- Label: value%` (the `%` suffix is stripped).
+
+### 14.3 Line Chart (`@linechart`)
+
+Line chart with one or more data series plotted over shared X-axis categories.
+
+````markdown
+```@linechart
+# x-labels: Jan, Feb, Mar, Apr, May, Jun
+# x-label: Month
+# y-label: Temperature (°C)
+- London: 5, 6, 10, 14, 17, 20
++ Madrid: 10, 12, 16, 19, 23, 28
+```
+````
+
+**Directives:**
+
+| Directive   | Values              | Default | Description                              |
+|-------------|---------------------|---------|------------------------------------------|
+| `x-labels`  | comma-separated     | none    | Category labels along the X axis         |
+| `x-label`   | string              | none    | Label for the X axis                     |
+| `y-label`   | string              | none    | Label for the Y axis (rotated 90° CCW)   |
+
+**Data format:** `- Series Name: value1, value2, value3, ...`
+
+Each series is a separate line. All series share the X-axis categories. A legend is displayed at the top-right.
+
+### 14.4 Scatter Plot (`@scatter`)
+
+2D scatter plot with labeled data points and optional custom sizes.
+
+````markdown
+```@scatter
+# x-label: Hours Studied
+# y-label: Test Score
+- Alice: 80, 90
+- Bob: 65, 75
+- Carol: 90, 95 (size: 30)
+```
+````
+
+**Directives:**
+
+| Directive | Values | Default | Description                            |
+|-----------|--------|---------|----------------------------------------|
+| `x-label` | string | none    | Label for the X axis                   |
+| `y-label` | string | none    | Label for the Y axis (rotated 90° CCW) |
+
+**Data format:** `- Label: x, y` or `- Label: x, y (size: N)`
+
+The optional `(size: N)` controls the radius of the data point. Without it, a default radius is used.
+
+### 14.5 Stacked Bar Chart (`@stackedbar`)
+
+Stacked bar chart showing multiple series stacked on top of each other for each category.
+
+````markdown
+```@stackedbar
+# categories: Q1, Q2, Q3, Q4
+# x-label: Quarter
+# y-label: Revenue ($M)
+- Product A: 40, 45, 50, 55
+- Product B: 30, 35, 40, 45
++ Product C: 15, 20, 25, 30
+```
+````
+
+**Directives:**
+
+| Directive    | Values          | Default | Description                            |
+|--------------|-----------------|---------|----------------------------------------|
+| `categories` | comma-separated | none    | Category labels along the X axis       |
+| `x-label`    | string          | none    | Label for the X axis                   |
+| `y-label`    | string          | none    | Label for the Y axis (rotated 90° CCW) |
+
+**Data format:** `- Series Name: value1, value2, value3, ...`
+
+Each series provides one value per category. Values are stacked vertically. A legend is displayed at the top.
+
+### 14.6 Pie Chart (`@piechart`)
+
+Pie chart showing proportional segments. Values are automatically normalized to 100%.
+
+````markdown
+```@piechart
+- Frontend: 35%
+- Backend: 30%
++ DevOps: 20%
+* Testing: 15%
+```
+````
+
+**Data format:** `- Label: value%` or `- Label: value`
+
+### 14.7 Donut Chart (`@donutchart`)
+
+Like a pie chart but with a hollow center that can display a label.
+
+````markdown
+```@donutchart
+# center: Total
+- Completed: 65%
+- In Progress: 25%
+- Not Started: 10%
+```
+````
+
+**Directives:**
+
+| Directive | Values | Default | Description                |
+|-----------|--------|---------|----------------------------|
+| `center`  | string | none    | Text displayed in the center hole |
+
+### 14.8 Word Cloud (`@wordcloud`)
+
+Word cloud with words sized proportionally and laid out using spiral packing. Some words are automatically rotated 90° counter-clockwise for the classic word cloud aesthetic.
+
+````markdown
+```@wordcloud
+- Artificial Intelligence (size: 50)
+- Machine Learning (size: 45)
+- Data Science (size: 42)
+- Python (size: 38)
+- Docker (size: 30)
+- React (size: 27)
+```
+````
+
+**Data format:** `- Word or Phrase (size: N)` or `- Word or Phrase`
+
+The `size` value controls relative importance (larger = bigger font). Without a size, the default is 20. Words are placed largest-first using spiral search. Approximately 35% of words are rendered vertically (rotated 90° CCW) for visual variety; the two largest words are always horizontal.
+
+For best results with word clouds, use 30-100 words with a good spread of sizes (e.g., 10-50).
+
+### 14.9 Timeline (`@timeline`)
+
+Horizontal or vertical timeline showing events in chronological order.
+
+````markdown
+```@timeline
+- 2000: Y2K Bug
++ 2004: Facebook Founded
++ 2007: iPhone Released
++ 2010: Instagram Launched
+```
+````
+
+**Data format:** `- Year/Date: Event description`
+
+### 14.10 Funnel Chart (`@funnel`)
+
+Funnel chart showing progressive narrowing stages.
+
+````markdown
+```@funnel
+- Awareness: 10000
+- Interest: 5000
+- Consideration: 2500
+- Decision: 1000
+```
+````
+
+**Data format:** `- Stage: value`
+
+### 14.11 KPI Cards (`@kpi`)
+
+Key Performance Indicator cards showing metric values with optional trend indicators.
+
+````markdown
+```@kpi
+- Revenue: $4.2M (trend: up, change: +12%)
+- Users: 1.2M (trend: up, change: +8%)
+- Churn: 2.1% (trend: down, change: -0.3%)
+```
+````
+
+**Data format:** `- Metric: value (trend: up|down|flat, change: text)`
+
+### 14.12 Progress Bars (`@progress`)
+
+Horizontal progress bar indicators.
+
+````markdown
+```@progress
+- Frontend: 85%
+- Backend: 60%
+- Testing: 30%
+```
+````
+
+**Data format:** `- Label: value%`
+
+### 14.13 Radar Chart (`@radar`)
+
+Spider/radar chart comparing multiple items across shared axes.
+
+````markdown
+```@radar
+# axes: Speed, Power, Range, Agility, Defense
+- Fighter A: 9, 7, 5, 8, 6
++ Fighter B: 4, 9, 8, 6, 7
+```
+````
+
+**Directives:**
+
+| Directive | Values          | Default | Description                    |
+|-----------|-----------------|---------|--------------------------------|
+| `axes`    | comma-separated | none    | Names of the radar axes        |
+
+**Data format:** `- Series: v1, v2, v3, ...` (one value per axis)
+
+### 14.14 Venn Diagram (`@venn`)
+
+Venn diagram showing set intersections (2-3 sets).
+
+````markdown
+```@venn
+- Frontend: HTML, CSS, JavaScript, React
+- Backend: Python, SQL, Redis, Docker
+- DevOps: Docker, AWS, Terraform, CI/CD
+```
+````
+
+**Data format:** `- Set Name: item1, item2, item3, ...`
+
+Shared items between sets are automatically detected and displayed in the overlapping regions.
+
+### 14.15 Organization Chart (`@orgchart`)
+
+Hierarchical org chart with parent-child relationships.
+
+````markdown
+```@orgchart
+- CEO
+- CTO (parent: CEO)
+- VP Engineering (parent: CTO)
+- VP Product (parent: CTO)
+- CFO (parent: CEO)
+```
+````
+
+**Data format:** `- Name` or `- Name (parent: ParentName)`
+
+The root node has no `parent` attribute. The chart is drawn as a tree with connecting lines.

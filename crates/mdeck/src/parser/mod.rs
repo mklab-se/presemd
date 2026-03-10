@@ -86,6 +86,36 @@ pub enum Block {
     BarChart {
         content: String,
     },
+    LineChart {
+        content: String,
+    },
+    DonutChart {
+        content: String,
+    },
+    KpiCards {
+        content: String,
+    },
+    FunnelChart {
+        content: String,
+    },
+    RadarChart {
+        content: String,
+    },
+    StackedBar {
+        content: String,
+    },
+    VennDiagram {
+        content: String,
+    },
+    ProgressBars {
+        content: String,
+    },
+    ScatterPlot {
+        content: String,
+    },
+    OrgChart {
+        content: String,
+    },
     ColumnSeparator,
 }
 
@@ -216,7 +246,17 @@ fn classify_layout(directives: &[Directive], blocks: &[Block]) -> Layout {
             Block::WordCloud { .. }
             | Block::Timeline { .. }
             | Block::PieChart { .. }
-            | Block::BarChart { .. } => visualizations += 1,
+            | Block::BarChart { .. }
+            | Block::LineChart { .. }
+            | Block::DonutChart { .. }
+            | Block::KpiCards { .. }
+            | Block::FunnelChart { .. }
+            | Block::RadarChart { .. }
+            | Block::StackedBar { .. }
+            | Block::VennDiagram { .. }
+            | Block::ProgressBars { .. }
+            | Block::ScatterPlot { .. }
+            | Block::OrgChart { .. } => visualizations += 1,
             Block::Table { .. } => tables += 1,
             Block::ColumnSeparator => column_separators += 1,
             Block::HorizontalRule => {}
@@ -323,7 +363,17 @@ pub fn compute_max_steps(blocks: &[Block]) -> usize {
             Block::WordCloud { content }
             | Block::Timeline { content }
             | Block::PieChart { content }
-            | Block::BarChart { content } => {
+            | Block::BarChart { content }
+            | Block::LineChart { content }
+            | Block::DonutChart { content }
+            | Block::KpiCards { content }
+            | Block::FunnelChart { content }
+            | Block::RadarChart { content }
+            | Block::StackedBar { content }
+            | Block::VennDiagram { content }
+            | Block::ProgressBars { content }
+            | Block::ScatterPlot { content }
+            | Block::OrgChart { content } => {
                 crate::render::visualizations::count_viz_steps(content)
             }
             _ => 0,

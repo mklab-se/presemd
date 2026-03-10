@@ -3,6 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::{LazyLock, Mutex};
 
 use eframe::egui::{self, Color32, FontId, Pos2};
+use eframe::epaint::TextShape;
 
 use crate::theme::Theme;
 
@@ -20,11 +21,14 @@ pub fn clear_cache() {
 
 #[derive(Debug, Clone)]
 struct WordLayout {
+    /// Visual bounding box position and size (after rotation)
     x: f32,
     y: f32,
     width: f32,
     height: f32,
     font_size: f32,
+    /// Whether this word is rotated 90° counter-clockwise
+    rotated: bool,
 }
 
 // ─── Parsing ────────────────────────────────────────────────────────────────
@@ -90,6 +94,33 @@ fn cache_key(content: &str, width_bits: u32, height_bits: u32) -> u64 {
     hasher.finish()
 }
 
+/// Deterministic "random" check: should this word be rotated?
+/// Uses a hash of the word text + index so it's stable across frames.
+/// Small, short words rotate more often — they slot into vertical gaps
+/// between large horizontal words. Long words stay horizontal since
+/// they'd create tall columns if rotated.
+fn should_rotate(text: &str, index: usize, rank: usize, total: usize) -> bool {
+    // Never rotate if too few words (need density for cloud shape)
+    if total < 12 {
+        return false;
+    }
+    // Only the smallest quarter of words can rotate — they're small enough
+    // to slot into vertical gaps without creating columns at the edges.
+    if rank < (total * 3) / 4 {
+        return false;
+    }
+
+    let mut hasher = DefaultHasher::new();
+    text.hash(&mut hasher);
+    index.hash(&mut hasher);
+    let hash = hasher.finish();
+
+    // Among the smallest quarter: short words rotate ~45%, long words ~15%
+    let length_penalty = (text.len() as f32 / 12.0).min(1.0);
+    let threshold = (45.0 - length_penalty * 30.0) as u64;
+    hash % 100 < threshold
+}
+
 // ─── Layout algorithm ───────────────────────────────────────────────────────
 
 /// Compute font sizes that fill the available area densely.
@@ -116,11 +147,15 @@ fn compute_font_sizes(
         .fold(f32::MAX, f32::min)
         .max(1.0);
 
-    // The largest word should have a font size that's roughly 1/4 to 1/3 of
-    // the area height. Smaller words scale down proportionally but with a
-    // minimum floor so they remain legible.
-    let max_font = (area_height * 0.28).min(area_width * 0.12);
-    let min_font = max_font * 0.15; // smallest word is ~15% of largest
+    // Scale max font based on word count: more words → smaller fonts.
+    // Sized to create a dense cloud shape within an elliptical boundary.
+    let n = entries.len() as f32;
+    // Scale fonts to fill the elliptical cloud area densely.
+    let count_factor = (8.0 / n.max(1.0)).sqrt().clamp(0.28, 0.80);
+    // Max font sized so the biggest word is prominent but not overwhelming.
+    // At 1920x1080 with ~75 words: roughly 8-10% of area height.
+    let max_font = (area_height * 0.28 * count_factor).min(area_width * 0.14 * count_factor);
+    let min_font = max_font * 0.14; // smallest word is ~14% of largest
 
     entries
         .iter()
@@ -129,8 +164,9 @@ fn compute_font_sizes(
                 max_font * scale
             } else {
                 let t = (e.size - min_size) / (max_size - min_size);
-                // Use power curve so medium words are still fairly large
-                let t_curved = t.powf(0.6);
+                // Moderate convex curve: big words are clearly bigger, but not
+                // so extreme that they dwarf everything else.
+                let t_curved = t.powf(1.5);
                 (min_font + t_curved * (max_font - min_font)) * scale
             }
         })
@@ -142,30 +178,56 @@ struct PlaceCtx {
     cy: f32,
     area_width: f32,
     area_height: f32,
+    /// Ellipse semi-axes for cloud shape constraint
+    ellipse_a: f32,
+    ellipse_b: f32,
     scale: f32,
 }
 
+/// Check whether a rectangle fits inside the cloud ellipse.
+/// We check that the rectangle's center is within a shrunk ellipse
+/// (shrunk by half the rect dimensions) so the whole rect stays inside.
+fn rect_inside_ellipse(x: f32, y: f32, w: f32, h: f32, ctx: &PlaceCtx) -> bool {
+    let center_x = x + w / 2.0;
+    let center_y = y + h / 2.0;
+    // Shrink ellipse by half the word dimensions so edges stay inside
+    let a = (ctx.ellipse_a - w / 2.0).max(1.0);
+    let b = (ctx.ellipse_b - h / 2.0).max(1.0);
+    let dx = center_x - ctx.cx;
+    let dy = center_y - ctx.cy;
+    (dx * dx) / (a * a) + (dy * dy) / (b * b) <= 1.0
+}
+
 /// Try to place a word using spiral search. Returns None if no valid position found.
+/// `word_size` is the font size of the word being placed, used to adapt spiral granularity.
 fn spiral_place(
     ctx: &PlaceCtx,
     w: f32,
     h: f32,
     placed: &[WordLayout],
     pad: f32,
+    word_size: f32,
 ) -> Option<(f32, f32)> {
     let mut t = 0.0f32;
-    let t_step = 0.08; // finer steps for better packing
-    let growth = 1.0 * ctx.scale;
-    // Horizontal stretch ratio to fill widescreen areas
-    let aspect = (ctx.area_width / ctx.area_height).max(1.0);
+    // Smaller words need finer spiral steps to find gaps between larger words
+    let size_ratio = (word_size / (ctx.area_height * 0.15)).min(1.0);
+    let t_step = 0.015 + size_ratio * 0.035; // finer steps for denser packing
+    // Slow growth rate keeps words close to center (cloud-like)
+    let base_growth = (ctx.area_width + ctx.area_height) * 0.00025;
+    let growth = (base_growth * (0.3 + size_ratio * 0.7)) * ctx.scale;
+    // Horizontal stretch to match ellipse shape
+    let aspect = (ctx.ellipse_a / ctx.ellipse_b).max(1.0);
 
-    for _ in 0..10000 {
+    let max_iters = if size_ratio < 0.3 { 40000 } else { 25000 };
+
+    for _ in 0..max_iters {
         let angle = t * 2.5;
         let r = t * growth;
         let x = ctx.cx + r * angle.cos() * aspect - w / 2.0;
         let y = ctx.cy + r * angle.sin() - h / 2.0;
 
-        if x >= 0.0 && y >= 0.0 && x + w <= ctx.area_width && y + h <= ctx.area_height {
+        // Check elliptical boundary (cloud shape) instead of rectangular
+        if rect_inside_ellipse(x, y, w, h, ctx) {
             let overlaps = placed.iter().any(|p| {
                 x < p.x + p.width + pad
                     && x + w + pad > p.x
@@ -181,8 +243,58 @@ fn spiral_place(
     None
 }
 
+/// Try to place a word, testing both its preferred rotation and the alternative.
+/// Returns the placed WordLayout or None if it truly can't fit.
+fn try_place_word(
+    ui: &egui::Ui,
+    ctx: &PlaceCtx,
+    entry: &WordEntry,
+    base_fs: f32,
+    prefer_rotated: bool,
+    placed: &[WordLayout],
+) -> Option<WordLayout> {
+    // Try preferred rotation first, then the alternative
+    for &try_rotated in &[prefer_rotated, !prefer_rotated] {
+        // Try progressively smaller sizes
+        for shrink in 0..6 {
+            let try_fs = base_fs * (1.0 - shrink as f32 * 0.10);
+            if try_fs < 2.0 * ctx.scale {
+                break; // don't go below minimum legible size
+            }
+            let font_id = FontId::proportional(try_fs);
+            let galley = ui
+                .painter()
+                .layout_no_wrap(entry.text.clone(), font_id, Color32::WHITE);
+            let orig_w = galley.rect.width();
+            let orig_h = galley.rect.height();
+
+            let (vis_w, vis_h) = if try_rotated {
+                (orig_h, orig_w)
+            } else {
+                (orig_w, orig_h)
+            };
+
+            // Padding between words creates gaps that small vertical words
+            // can slot into. Scale with font size so big words get bigger gaps.
+            let pad = (try_fs * 0.15).max(2.0 * ctx.scale);
+            if let Some((x, y)) = spiral_place(ctx, vis_w, vis_h, placed, pad, try_fs) {
+                return Some(WordLayout {
+                    x,
+                    y,
+                    width: vis_w,
+                    height: vis_h,
+                    font_size: try_fs,
+                    rotated: try_rotated,
+                });
+            }
+        }
+    }
+    None
+}
+
 /// Dense spiral placement: place largest words first at center, pack tightly.
-/// If a word can't be placed at its target size, progressively shrink it.
+/// Words that can't fit are dropped (not overlaid on top of others).
+/// Some words are rotated 90° CCW for a classic word cloud look.
 fn compute_layout(
     ui: &egui::Ui,
     entries: &[WordEntry],
@@ -201,6 +313,7 @@ fn compute_layout(
     });
 
     let mut placed: Vec<WordLayout> = Vec::new();
+    // Initialize with zero-size layouts (unplaced words won't be drawn)
     let mut result = vec![
         WordLayout {
             x: 0.0,
@@ -208,78 +321,37 @@ fn compute_layout(
             width: 0.0,
             height: 0.0,
             font_size: 0.0,
+            rotated: false,
         };
         entries.len()
     ];
+
+    // Ellipse creates a cloud shape floating in the center with margins.
+    // Words that don't fit get dropped, giving clean cloud edges.
+    let ellipse_a = area_width * 0.44; // horizontal semi-axis (~88% of width)
+    let ellipse_b = area_height * 0.44; // vertical semi-axis (~88% of height)
 
     let ctx = PlaceCtx {
         cx: area_width / 2.0,
         cy: area_height / 2.0,
         area_width,
         area_height,
+        ellipse_a,
+        ellipse_b,
         scale,
     };
 
-    for &orig_idx in &sorted_indices {
+    let total = entries.len();
+    for (rank, &orig_idx) in sorted_indices.iter().enumerate() {
         let entry = &entries[orig_idx];
-        let mut fs = font_sizes[orig_idx];
-        let pad = (1.0 * scale).max(fs * 0.01);
+        let fs = font_sizes[orig_idx];
+        let prefer_rotated = should_rotate(&entry.text, orig_idx, rank, total);
 
-        // Try placing at full size, then shrink up to 3 times if needed
-        let mut layout_found = None;
-        for shrink in 0..4 {
-            let try_fs = fs * (1.0 - shrink as f32 * 0.15);
-            let font_id = FontId::proportional(try_fs);
-            let galley = ui
-                .painter()
-                .layout_no_wrap(entry.text.clone(), font_id, Color32::WHITE);
-            let w = galley.rect.width();
-            let h = galley.rect.height();
-
-            if let Some((x, y)) = spiral_place(&ctx, w, h, &placed, pad) {
-                fs = try_fs;
-                layout_found = Some(WordLayout {
-                    x,
-                    y,
-                    width: w,
-                    height: h,
-                    font_size: fs,
-                });
-                break;
-            }
+        if let Some(layout) = try_place_word(ui, &ctx, entry, fs, prefer_rotated, &placed) {
+            placed.push(layout.clone());
+            result[orig_idx] = layout;
         }
-
-        // Last resort: place at smallest tried size, skip if truly can't fit
-        let layout = layout_found.unwrap_or_else(|| {
-            let small_fs = fs * 0.55;
-            let font_id = FontId::proportional(small_fs);
-            let galley = ui
-                .painter()
-                .layout_no_wrap(entry.text.clone(), font_id, Color32::WHITE);
-            let w = galley.rect.width();
-            let h = galley.rect.height();
-            if let Some((x, y)) = spiral_place(&ctx, w, h, &placed, 0.0) {
-                WordLayout {
-                    x,
-                    y,
-                    width: w,
-                    height: h,
-                    font_size: small_fs,
-                }
-            } else {
-                // Absolute fallback: tiny and at center (shouldn't happen normally)
-                WordLayout {
-                    x: (ctx.cx - w / 2.0).clamp(0.0, (area_width - w).max(0.0)),
-                    y: (ctx.cy - h / 2.0).clamp(0.0, (area_height - h).max(0.0)),
-                    width: w,
-                    height: h,
-                    font_size: small_fs,
-                }
-            }
-        });
-
-        placed.push(layout.clone());
-        result[orig_idx] = layout;
+        // Words that can't fit are simply not placed (font_size stays 0)
     }
 
     result
@@ -337,13 +409,30 @@ pub fn draw_word_cloud(
         }
 
         if let Some(wl) = layouts.get(i) {
+            // Skip words that couldn't be placed (font_size 0)
+            if wl.font_size < 1.0 {
+                continue;
+            }
             let color_idx = i % palette.len();
             let color = Theme::with_opacity(palette[color_idx], opacity);
             let font_id = FontId::proportional(wl.font_size);
 
             let galley = painter.layout_no_wrap(entry.text.clone(), font_id, color);
-            let text_pos = Pos2::new(pos.x + wl.x, pos.y + wl.y);
-            painter.galley(text_pos, galley, color);
+
+            if wl.rotated {
+                // Rotate -90° (CCW). Pivot is at pos (top-left of unrotated text).
+                // For visual bbox at (vx, vy) with visual size (orig_h, orig_w):
+                //   anchor pos.x = vx + visual_width (= vx + orig_h)
+                //   anchor pos.y = vy
+                let anchor_pos = Pos2::new(pos.x + wl.x + wl.width, pos.y + wl.y);
+                let text_shape = TextShape::new(anchor_pos, galley, color)
+                    .with_angle(-std::f32::consts::FRAC_PI_2)
+                    .with_opacity_factor(opacity);
+                painter.add(text_shape);
+            } else {
+                let text_pos = Pos2::new(pos.x + wl.x, pos.y + wl.y);
+                painter.galley(text_pos, galley, color);
+            }
         }
     }
 
@@ -398,6 +487,30 @@ mod tests {
         assert_eq!(parse_size_meta("(size: 40)"), Some(40.0));
         assert_eq!(parse_size_meta("(size: 12.5)"), Some(12.5));
         assert_eq!(parse_size_meta("(invalid)"), None);
+    }
+
+    #[test]
+    fn test_should_rotate_never_for_top_words() {
+        // Top 75% of words by rank should never rotate
+        for rank in 0..37 {
+            assert!(!should_rotate("Big", rank, rank, 50));
+        }
+    }
+
+    #[test]
+    fn test_should_rotate_never_for_few_words() {
+        // Fewer than 12 words → no rotation
+        for i in 0..11 {
+            assert!(!should_rotate("Word", i, i, 11));
+        }
+    }
+
+    #[test]
+    fn test_should_rotate_deterministic() {
+        // Same input should always give the same result
+        let r1 = should_rotate("Test", 5, 5, 20);
+        let r2 = should_rotate("Test", 5, 5, 20);
+        assert_eq!(r1, r2);
     }
 
     #[test]

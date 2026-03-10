@@ -519,16 +519,32 @@ impl PresentationApp {
     }
 
     fn draw_end_slide(&mut self, ui: &egui::Ui, rect: egui::Rect, scale: f32) {
-        // "The End" centered
+        // Draw ESC hint at top like regular slides
+        let hint_color = egui::Color32::from_gray(100);
+        let hint_galley = ui.painter().layout_no_wrap(
+            "Press ESC to exit".to_string(),
+            egui::FontId::proportional(14.0 * scale),
+            hint_color,
+        );
+        ui.painter().galley(
+            egui::pos2(
+                rect.center().x - hint_galley.rect.width() / 2.0,
+                rect.top() + 20.0 * scale,
+            ),
+            hint_galley,
+            hint_color,
+        );
+
+        // "The End" centered — large enough to read from distance
         let title_color = egui::Color32::from_gray(220);
         let galley = ui.painter().layout_no_wrap(
             "The End".to_string(),
-            egui::FontId::proportional(72.0 * scale),
+            egui::FontId::proportional(140.0 * scale),
             title_color,
         );
         let title_pos = egui::pos2(
             rect.center().x - galley.rect.width() / 2.0,
-            rect.center().y - galley.rect.height() / 2.0 - 20.0 * scale,
+            rect.center().y - galley.rect.height() / 2.0 - 40.0 * scale,
         );
         ui.painter().galley(title_pos, galley, title_color);
 
@@ -806,11 +822,18 @@ impl eframe::App for PresentationApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.update_fps();
 
-        // Detect power-state time jumps and shift animation timestamps forward
+        // Detect power-state time jumps and shift animation timestamps forward.
+        // Threshold must exceed the platform's repaint heartbeat interval:
+        //   Linux: 500ms heartbeat → 2s threshold
+        //   macOS/Windows: 4s heartbeat → 6s threshold
         let now = Instant::now();
         let frame_delta = now.duration_since(self.last_frame);
         self.last_frame = now;
-        if frame_delta.as_millis() > 2000 {
+        #[cfg(target_os = "linux")]
+        let time_jump_threshold_ms = 2000;
+        #[cfg(not(target_os = "linux"))]
+        let time_jump_threshold_ms = 6000;
+        if frame_delta.as_millis() > time_jump_threshold_ms {
             let jump = frame_delta;
             self.incident_log.record(
                 "time_jump",
@@ -2422,7 +2445,7 @@ mod tests {
 
     #[test]
     fn find_matching_slide_exact_match() {
-        let slides = vec![slide("a"), slide("b"), slide("c")];
+        let _slides = vec![slide("a"), slide("b"), slide("c")];
         // Was at index 1 ("b"), new slides inserted "x" before it
         let new_slides = vec![slide("x"), slide("a"), slide("b"), slide("c")];
         assert_eq!(find_matching_slide(Some("b"), 1, &new_slides), 2);

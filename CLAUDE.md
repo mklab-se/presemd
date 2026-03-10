@@ -8,6 +8,15 @@ A markdown-based presentation tool.
 - **Simplicity over complexity.** Fewer controls, fewer options, fewer edge cases. The tool should feel effortless to use. When in doubt, leave it out.
 - **Any markdown file should be presentable.** Overflow handling, layout inference, and sensible defaults mean users shouldn't need to tailor their markdown to the tool.
 
+### Visualization Design Principles
+
+All visualizations (charts, diagrams, etc.) must follow these principles:
+
+- **Readability from distance.** This is a presentation tool — audiences may be far from the screen. All text must be large enough to read from the back of a room. Font sizes should be consistent across similar elements in all visualization types.
+- **Space and margins.** Use generous padding and margins. Visualizations should fill available space without feeling cramped, but maintain a feeling of breathing room and negative space. Avoid tiny text crammed into corners.
+- **Consistent font sizing.** Define a few standard font size categories (labels ~0.65-0.75, values ~0.55-0.65, grid labels ~0.55, legends ~0.65) and reuse them across all visualizations. Never go below 0.5 for any readable text.
+- **Visual polish.** Smooth animations, subtle colors, no harsh borders between stacked elements. Prefer transparent overlapping areas (like in Venn/radar) over opaque blocking.
+
 ## Commands
 
 ```bash
@@ -130,12 +139,45 @@ mdeck --help                 # Show help
   ```
   Then read the exported PNGs to check layout, syntax highlighting, spacing, and overall visual quality.
 - Test presentations in `sample-presentations/` cover specific layouts: `test-bullet.md`, `test-code.md`, `poker-night.md`, etc.
+- **Per-visualization test files** exist for efficient testing of individual visualization types:
+  - `test-viz-barchart.md` — bar charts (vertical, horizontal, axis labels, reveal)
+  - `test-viz-donutchart.md` — donut charts (center text, no center, reveal)
+  - `test-viz-funnel.md` — funnel charts (basic, detailed, reveal)
+  - `test-viz-kpi.md` — KPI cards (basic, many metrics, reveal)
+  - `test-viz-linechart.md` — line charts (single/multi series, axis labels)
+  - `test-viz-orgchart.md` — org charts (basic, deep hierarchy, reveal)
+  - `test-viz-piechart.md` — pie charts (basic, many slices, reveal)
+  - `test-viz-progress.md` — progress bars (basic, many bars, reveal)
+  - `test-viz-radar.md` — radar charts (single/multi series, reveal)
+  - `test-viz-scatter.md` — scatter plots (basic, sized, axis labels, reveal)
+  - `test-viz-stacked-bar.md` — stacked bar charts (basic, axis labels, reveal)
+  - `test-viz-timeline.md` — timelines (basic, long, reveal)
+  - `test-viz-venn.md` — Venn diagrams (2-set, 3-set, reveal)
+  - `test-viz-wordcloud.md` — word clouds (large, small, progressive reveal)
+  - `test-diagram.md` — diagrams (auto-layout, grid, arrow types, reveal)
+  - `test-all-visualizations.md` — comprehensive test with every visualization type
+  When working on a specific visualization type, use its dedicated test file for faster iteration.
 - When fixing visual issues, export before and after to confirm the fix.
 
-### Documentation
-- **Before pushing or releasing, review all documentation for accuracy:**
+### Runtime Testing
+- **After making changes, run the application and check for runtime incidents.** Launch a relevant test presentation, navigate through slides, then check for errors:
+  ```bash
+  cargo run -p mdeck -- sample-presentations/test-all-visualizations.md
+  ```
+  After quitting, if the application reports incidents, read the log file and fix any issues. Incident logs are at `~/Library/Application Support/mdeck/logs/` (macOS) or `~/.config/mdeck/logs/` (Linux).
+- Common issues to watch for: `time_jump` false positives (threshold must exceed the repaint heartbeat interval), rendering panics, and layout overflow.
+
+### Documentation & Sample Presentations
+- **Before considering any task done, ensure all documentation and sample presentations are up to date.** This is a blocking requirement — incomplete docs or outdated samples mean the task is not finished.
+- **Review all documentation for accuracy before pushing or releasing:**
   - `README.md` — features, quick start, badges
   - `CHANGELOG.md` — new entries for every user-visible change
   - `CLAUDE.md` — architecture, commands, patterns
+  - `crates/mdeck/doc/mdeck-spec.md` — format specification (embedded in binary via `mdeck spec`)
+- **The format spec (`mdeck-spec.md`) must be updated whenever features are added or changed.** This includes new visualization types, directives, keyboard shortcuts, layouts, or any other user-facing feature. The spec is used by both humans and AI agents to understand how to write presentations.
+- **Sample presentations must reflect all features.** When adding a new visualization type, layout, or feature:
+  - Add it to `test-all-visualizations.md` (comprehensive showcase)
+  - Create a dedicated `test-viz-<type>.md` or `test-<feature>.md` file
+  - Update `introducing-mdeck.md` if the feature is significant enough for the intro presentation
 - When adding new commands, flags, or crates, update all relevant docs in the same commit
 - `CHANGELOG.md` must be updated for every release with a dated entry following Keep a Changelog format

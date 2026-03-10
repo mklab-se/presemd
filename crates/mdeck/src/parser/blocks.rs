@@ -221,6 +221,16 @@ fn parse_code_block(lines: &[&str], start: usize, fence_char: char) -> (Block, u
         VizKind::Timeline => Block::Timeline { content: code },
         VizKind::PieChart => Block::PieChart { content: code },
         VizKind::BarChart => Block::BarChart { content: code },
+        VizKind::LineChart => Block::LineChart { content: code },
+        VizKind::DonutChart => Block::DonutChart { content: code },
+        VizKind::KpiCards => Block::KpiCards { content: code },
+        VizKind::FunnelChart => Block::FunnelChart { content: code },
+        VizKind::RadarChart => Block::RadarChart { content: code },
+        VizKind::StackedBar => Block::StackedBar { content: code },
+        VizKind::VennDiagram => Block::VennDiagram { content: code },
+        VizKind::ProgressBars => Block::ProgressBars { content: code },
+        VizKind::ScatterPlot => Block::ScatterPlot { content: code },
+        VizKind::OrgChart => Block::OrgChart { content: code },
         VizKind::None => Block::CodeBlock {
             language,
             code,
@@ -239,6 +249,16 @@ enum VizKind {
     Timeline,
     PieChart,
     BarChart,
+    LineChart,
+    DonutChart,
+    KpiCards,
+    FunnelChart,
+    RadarChart,
+    StackedBar,
+    VennDiagram,
+    ProgressBars,
+    ScatterPlot,
+    OrgChart,
 }
 
 fn parse_code_info(info: &str) -> (Option<String>, Vec<usize>, VizKind) {
@@ -261,6 +281,36 @@ fn parse_code_info(info: &str) -> (Option<String>, Vec<usize>, VizKind) {
     }
     if info.starts_with("@barchart") {
         return (None, vec![], VizKind::BarChart);
+    }
+    if info.starts_with("@linechart") {
+        return (None, vec![], VizKind::LineChart);
+    }
+    if info.starts_with("@donut") {
+        return (None, vec![], VizKind::DonutChart);
+    }
+    if info.starts_with("@kpi") {
+        return (None, vec![], VizKind::KpiCards);
+    }
+    if info.starts_with("@funnel") {
+        return (None, vec![], VizKind::FunnelChart);
+    }
+    if info.starts_with("@radar") {
+        return (None, vec![], VizKind::RadarChart);
+    }
+    if info.starts_with("@stackedbar") {
+        return (None, vec![], VizKind::StackedBar);
+    }
+    if info.starts_with("@venn") {
+        return (None, vec![], VizKind::VennDiagram);
+    }
+    if info.starts_with("@progress") {
+        return (None, vec![], VizKind::ProgressBars);
+    }
+    if info.starts_with("@scatter") {
+        return (None, vec![], VizKind::ScatterPlot);
+    }
+    if info.starts_with("@orgchart") {
+        return (None, vec![], VizKind::OrgChart);
     }
 
     // Parse language and optional highlight spec

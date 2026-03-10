@@ -1,8 +1,21 @@
 use std::time::Instant;
 
+use eframe::egui::{self, Color32, FontId, Pos2};
+use eframe::epaint::TextShape;
+
 pub mod bar_chart;
+pub mod donut_chart;
+pub mod funnel_chart;
+pub mod kpi_cards;
+pub mod line_chart;
+pub mod org_chart;
 pub mod pie_chart;
+pub mod progress_bars;
+pub mod radar_chart;
+pub mod scatter_plot;
+pub mod stacked_bar;
 pub mod timeline;
+pub mod venn_diagram;
 pub mod word_cloud;
 
 const REVEAL_ANIMATION_DURATION: f32 = 0.4; // seconds
@@ -82,6 +95,58 @@ pub fn assign_steps(reveals: &[VizReveal]) -> Vec<usize> {
             VizReveal::WithPrev => step_counter,
         })
         .collect()
+}
+
+/// Draw a horizontal axis label centered below the chart area.
+pub fn draw_x_axis_label(
+    painter: &egui::Painter,
+    text: &str,
+    font: FontId,
+    color: Color32,
+    chart_left: f32,
+    chart_width: f32,
+    y: f32,
+) {
+    let galley = painter.layout_no_wrap(text.to_string(), font, color);
+    let lx = chart_left + (chart_width - galley.rect.width()) / 2.0;
+    painter.galley(Pos2::new(lx, y), galley, color);
+}
+
+/// Draw a vertical axis label rotated 90° CCW, centered along the chart's Y axis.
+pub fn draw_y_axis_label(
+    painter: &egui::Painter,
+    text: &str,
+    font: FontId,
+    color: Color32,
+    x: f32,
+    chart_top: f32,
+    chart_height: f32,
+) {
+    let galley = painter.layout_no_wrap(text.to_string(), font, color);
+    let text_width = galley.rect.width();
+    // Place anchor so that the rotated text is vertically centered
+    // After -90° rotation around anchor, text extends upward from anchor
+    let anchor_x = x;
+    let anchor_y = chart_top + (chart_height + text_width) / 2.0;
+    let text_shape = TextShape::new(Pos2::new(anchor_x, anchor_y), galley, color)
+        .with_angle(-std::f32::consts::FRAC_PI_2);
+    painter.add(text_shape);
+}
+
+/// Parse an axis label directive from a comment line.
+/// Returns Some((key, value)) for lines like "# x-label: Foo" or "# y-label: Bar".
+pub fn parse_axis_label_directive(trimmed: &str) -> Option<(&str, String)> {
+    for key in &["x-label", "y-label"] {
+        let prefixed = format!("# {key}:");
+        let compact = format!("#{key}:");
+        if let Some(rest) = trimmed.strip_prefix(prefixed.as_str()) {
+            return Some((key, rest.trim().to_string()));
+        }
+        if let Some(rest) = trimmed.strip_prefix(compact.as_str()) {
+            return Some((key, rest.trim().to_string()));
+        }
+    }
+    None
 }
 
 #[cfg(test)]

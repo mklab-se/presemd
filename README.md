@@ -54,6 +54,9 @@ mdeck --version      # Show version
 ### Commands
 
 ```bash
+mdeck spec                             # Print full format specification
+mdeck spec --short                     # Print quick reference card
+mdeck export slides.md                 # Export slides as PNG images
 mdeck ai                               # Show AI status
 mdeck ai test                          # Test AI integration
 mdeck ai config                        # Open AI config in editor
@@ -61,6 +64,8 @@ mdeck config show                      # Display current settings
 mdeck config set defaults.theme dark   # Set a config value
 mdeck completion zsh                   # Generate shell completions
 ```
+
+The `mdeck spec` command outputs the complete MDeck markdown format specification, including all supported slide layouts, directives, diagram syntax, and visualization types. This is useful both for humans learning the format and for AI agents that need to understand how to write presentations for MDeck.
 
 ### Shell Completions
 
@@ -90,6 +95,12 @@ cargo clippy --workspace -- -D warnings  # Lint
 cargo fmt --all -- --check               # Format check
 cargo run -p mdeck     # Run the app
 ```
+
+## Documentation
+
+The format specification (`crates/mdeck/doc/mdeck-spec.md`) is the authoritative reference for the MDeck markdown format. It is embedded in the binary and available via `mdeck spec`.
+
+**Important:** The spec must be kept up to date whenever features are added or changed. Any new slide layout, directive, visualization type, or keyboard shortcut must be documented in the spec before release.
 
 ## License
 

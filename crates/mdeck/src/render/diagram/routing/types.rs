@@ -144,6 +144,7 @@ impl Direction {
 
     /// Whether this direction is vertical (North/South).
     #[cfg(test)]
+    #[allow(dead_code)]
     pub fn is_vertical(self) -> bool {
         !self.is_horizontal()
     }
@@ -189,6 +190,7 @@ impl SegmentId {
 
     /// Whether this segment is vertical.
     #[cfg(test)]
+    #[allow(dead_code)]
     pub fn is_vertical(&self) -> bool {
         self.from.col2 == self.to.col2
     }

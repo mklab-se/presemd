@@ -1,5 +1,5 @@
 use crate::render::diagram::routing::serialize::{route_to_string, string_to_route};
-use crate::render::diagram::routing::types::{GridCoord, Route, RouteComplexity, Waypoint};
+use crate::render::diagram::routing::types::{GridCoord, Route, Waypoint};
 
 fn make_route(waypoints: Vec<(f64, f64, i32)>) -> Route {
     let wps: Vec<Waypoint> = waypoints

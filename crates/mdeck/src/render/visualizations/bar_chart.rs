@@ -4,7 +4,10 @@ use eframe::egui::{self, Color32, FontId, Pos2, Stroke};
 
 use crate::theme::Theme;
 
-use super::{VizReveal, assign_steps, parse_reveal_prefix, reveal_anim_progress};
+use super::{
+    VizReveal, assign_steps, draw_x_axis_label, draw_y_axis_label, parse_axis_label_directive,
+    parse_reveal_prefix, reveal_anim_progress,
+};
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
 
@@ -40,9 +43,18 @@ struct BarEntry {
     reveal: VizReveal,
 }
 
-fn parse_bar_chart(content: &str) -> (Vec<BarEntry>, Orientation) {
+struct BarChartData {
+    entries: Vec<BarEntry>,
+    orientation: Orientation,
+    x_label: Option<String>,
+    y_label: Option<String>,
+}
+
+fn parse_bar_chart(content: &str) -> BarChartData {
     let mut entries = Vec::new();
     let mut orientation = Orientation::Vertical;
+    let mut x_label = None;
+    let mut y_label = None;
 
     for line in content.lines() {
         let trimmed = line.trim();
@@ -61,6 +73,12 @@ fn parse_bar_chart(content: &str) -> (Vec<BarEntry>, Orientation) {
                     orientation = Orientation::Horizontal;
                 } else if val.eq_ignore_ascii_case("vertical") {
                     orientation = Orientation::Vertical;
+                }
+            } else if let Some((key, val)) = parse_axis_label_directive(trimmed) {
+                match key {
+                    "x-label" => x_label = Some(val),
+                    "y-label" => y_label = Some(val),
+                    _ => {}
                 }
             }
             continue;
@@ -85,7 +103,12 @@ fn parse_bar_chart(content: &str) -> (Vec<BarEntry>, Orientation) {
         }
     }
 
-    (entries, orientation)
+    BarChartData {
+        entries,
+        orientation,
+        x_label,
+        y_label,
+    }
 }
 
 // ─── Renderer ───────────────────────────────────────────────────────────────
@@ -103,8 +126,8 @@ pub fn draw_bar_chart(
     reveal_timestamp: Option<Instant>,
     scale: f32,
 ) -> f32 {
-    let (entries, orientation) = parse_bar_chart(content);
-    if entries.is_empty() {
+    let data = parse_bar_chart(content);
+    if data.entries.is_empty() {
         return 0.0;
     }
 
@@ -114,20 +137,20 @@ pub fn draw_bar_chart(
         500.0 * scale
     };
 
-    let reveals: Vec<VizReveal> = entries.iter().map(|e| e.reveal).collect();
+    let reveals: Vec<VizReveal> = data.entries.iter().map(|e| e.reveal).collect();
     let steps = assign_steps(&reveals);
     let palette = theme.edge_palette();
     let painter = ui.painter();
 
-    let max_value = entries.iter().map(|e| e.value).fold(0.0f32, f32::max);
+    let max_value = data.entries.iter().map(|e| e.value).fold(0.0f32, f32::max);
     if max_value <= 0.0 {
         return height;
     }
 
-    let needs_repaint = match orientation {
+    let needs_repaint = match data.orientation {
         Orientation::Vertical => draw_vertical(
             painter,
-            &entries,
+            &data.entries,
             &steps,
             &palette,
             theme,
@@ -139,10 +162,12 @@ pub fn draw_bar_chart(
             reveal_step,
             reveal_timestamp,
             scale,
+            data.x_label.as_deref(),
+            data.y_label.as_deref(),
         ),
         Orientation::Horizontal => draw_horizontal(
             painter,
-            &entries,
+            &data.entries,
             &steps,
             &palette,
             theme,
@@ -154,6 +179,8 @@ pub fn draw_bar_chart(
             reveal_step,
             reveal_timestamp,
             scale,
+            data.x_label.as_deref(),
+            data.y_label.as_deref(),
         ),
     };
 
@@ -179,16 +206,20 @@ fn draw_vertical(
     reveal_step: usize,
     reveal_timestamp: Option<Instant>,
     scale: f32,
+    x_label: Option<&str>,
+    y_label: Option<&str>,
 ) -> bool {
     let mut needs_repaint = false;
     let n = entries.len();
     let padding = 60.0 * scale;
     let label_area = 40.0 * scale; // space for labels below bars
     let value_area = 30.0 * scale; // space for value labels above bars
-    let chart_height = height - padding - label_area - value_area;
+    let y_label_space = if y_label.is_some() { 30.0 * scale } else { 0.0 };
+    let x_label_space = if x_label.is_some() { 30.0 * scale } else { 0.0 };
+    let chart_height = height - padding - label_area - value_area - x_label_space;
     let chart_bottom = pos.y + padding + value_area + chart_height;
-    let chart_left = pos.x + padding;
-    let chart_width = max_width - padding * 2.0;
+    let chart_left = pos.x + padding + y_label_space;
+    let chart_width = max_width - padding * 2.0 - y_label_space;
 
     // Axis line
     let axis_color = Theme::with_opacity(theme.foreground, opacity * 0.2);
@@ -296,6 +327,32 @@ fn draw_vertical(
         );
     }
 
+    // Axis labels
+    let axis_label_font = FontId::proportional(theme.body_size * 0.65 * scale);
+    let axis_label_color = Theme::with_opacity(theme.foreground, opacity * 0.7);
+    if let Some(text) = x_label {
+        draw_x_axis_label(
+            painter,
+            text,
+            axis_label_font.clone(),
+            axis_label_color,
+            chart_left,
+            chart_width,
+            chart_bottom + label_area + 4.0 * scale,
+        );
+    }
+    if let Some(text) = y_label {
+        draw_y_axis_label(
+            painter,
+            text,
+            axis_label_font,
+            axis_label_color,
+            pos.x + padding * 0.3,
+            pos.y + padding + value_area,
+            chart_height,
+        );
+    }
+
     needs_repaint
 }
 
@@ -314,16 +371,20 @@ fn draw_horizontal(
     reveal_step: usize,
     reveal_timestamp: Option<Instant>,
     scale: f32,
+    x_label: Option<&str>,
+    y_label: Option<&str>,
 ) -> bool {
     let mut needs_repaint = false;
     let n = entries.len();
     let padding = 40.0 * scale;
     let label_area = 140.0 * scale; // space for labels on the left
     let value_area = 60.0 * scale; // space for value labels on the right
-    let chart_left = pos.x + padding + label_area;
-    let chart_width = max_width - padding * 2.0 - label_area - value_area;
+    let x_label_space = if x_label.is_some() { 30.0 * scale } else { 0.0 };
+    let y_label_space = if y_label.is_some() { 30.0 * scale } else { 0.0 };
+    let chart_left = pos.x + padding + label_area + y_label_space;
+    let chart_width = max_width - padding * 2.0 - label_area - value_area - y_label_space;
     let chart_top = pos.y + padding;
-    let chart_height = height - padding * 2.0;
+    let chart_height = height - padding * 2.0 - x_label_space;
 
     // Axis line (vertical)
     let axis_color = Theme::with_opacity(theme.foreground, opacity * 0.2);
@@ -386,6 +447,32 @@ fn draw_horizontal(
         }
     }
 
+    // Axis labels
+    let axis_label_font = FontId::proportional(theme.body_size * 0.65 * scale);
+    let axis_label_color = Theme::with_opacity(theme.foreground, opacity * 0.7);
+    if let Some(text) = x_label {
+        draw_x_axis_label(
+            painter,
+            text,
+            axis_label_font.clone(),
+            axis_label_color,
+            chart_left,
+            chart_width,
+            chart_top + chart_height + 10.0 * scale,
+        );
+    }
+    if let Some(text) = y_label {
+        draw_y_axis_label(
+            painter,
+            text,
+            axis_label_font,
+            axis_label_color,
+            pos.x + padding * 0.3,
+            chart_top,
+            chart_height,
+        );
+    }
+
     needs_repaint
 }
 
@@ -398,51 +485,60 @@ mod tests {
     #[test]
     fn test_parse_bar_chart_basic() {
         let content = "- Sales: 40\n- Costs: 25";
-        let (entries, orientation) = parse_bar_chart(content);
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].label, "Sales");
-        assert_eq!(entries[0].value, 40.0);
-        assert_eq!(orientation, Orientation::Vertical);
+        let data = parse_bar_chart(content);
+        assert_eq!(data.entries.len(), 2);
+        assert_eq!(data.entries[0].label, "Sales");
+        assert_eq!(data.entries[0].value, 40.0);
+        assert_eq!(data.orientation, Orientation::Vertical);
     }
 
     #[test]
     fn test_parse_bar_chart_horizontal() {
         let content = "# orientation: horizontal\n- A: 10\n- B: 20";
-        let (entries, orientation) = parse_bar_chart(content);
-        assert_eq!(entries.len(), 2);
-        assert_eq!(orientation, Orientation::Horizontal);
+        let data = parse_bar_chart(content);
+        assert_eq!(data.entries.len(), 2);
+        assert_eq!(data.orientation, Orientation::Horizontal);
     }
 
     #[test]
     fn test_parse_bar_chart_percentage_suffix() {
         let content = "- A: 40%\n- B: 60%";
-        let (entries, _) = parse_bar_chart(content);
-        assert_eq!(entries[0].value, 40.0);
-        assert_eq!(entries[1].value, 60.0);
+        let data = parse_bar_chart(content);
+        assert_eq!(data.entries[0].value, 40.0);
+        assert_eq!(data.entries[1].value, 60.0);
     }
 
     #[test]
     fn test_parse_bar_chart_reveal_markers() {
         let content = "- A: 10\n+ B: 20\n* C: 30";
-        let (entries, _) = parse_bar_chart(content);
-        assert_eq!(entries[0].reveal, VizReveal::Static);
-        assert_eq!(entries[1].reveal, VizReveal::NextStep);
-        assert_eq!(entries[2].reveal, VizReveal::WithPrev);
+        let data = parse_bar_chart(content);
+        assert_eq!(data.entries[0].reveal, VizReveal::Static);
+        assert_eq!(data.entries[1].reveal, VizReveal::NextStep);
+        assert_eq!(data.entries[2].reveal, VizReveal::WithPrev);
     }
 
     #[test]
     fn test_parse_bar_chart_skips_invalid() {
         let content = "- Valid: 50\n- no_value\n# comment\n- Also: 30";
-        let (entries, _) = parse_bar_chart(content);
-        assert_eq!(entries.len(), 2);
+        let data = parse_bar_chart(content);
+        assert_eq!(data.entries.len(), 2);
     }
 
     #[test]
     fn test_parse_bar_chart_decimal_values() {
         let content = "- A: 3.14\n- B: 2.71";
-        let (entries, _) = parse_bar_chart(content);
-        assert!((entries[0].value - 3.14).abs() < 0.001);
-        assert!((entries[1].value - 2.71).abs() < 0.001);
+        let data = parse_bar_chart(content);
+        assert!((data.entries[0].value - 3.14).abs() < 0.001);
+        assert!((data.entries[1].value - 2.71).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_parse_bar_chart_axis_labels() {
+        let content = "# x-label: Categories\n# y-label: Revenue ($M)\n- A: 10\n- B: 20";
+        let data = parse_bar_chart(content);
+        assert_eq!(data.x_label, Some("Categories".to_string()));
+        assert_eq!(data.y_label, Some("Revenue ($M)".to_string()));
+        assert_eq!(data.entries.len(), 2);
     }
 
     #[test]

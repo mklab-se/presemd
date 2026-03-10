@@ -504,7 +504,17 @@ pub fn measure_single_block_height(
         | Block::WordCloud { .. }
         | Block::Timeline { .. }
         | Block::PieChart { .. }
-        | Block::BarChart { .. } => 500.0 * scale, // visualizations fill available space
+        | Block::BarChart { .. }
+        | Block::LineChart { .. }
+        | Block::DonutChart { .. }
+        | Block::KpiCards { .. }
+        | Block::FunnelChart { .. }
+        | Block::RadarChart { .. }
+        | Block::StackedBar { .. }
+        | Block::VennDiagram { .. }
+        | Block::ProgressBars { .. }
+        | Block::ScatterPlot { .. }
+        | Block::OrgChart { .. } => 500.0 * scale, // visualizations fill available space
         _ => theme.body_size * scale * 1.5,
     }
 }
@@ -634,6 +644,140 @@ pub fn draw_block(
             scale,
         ),
         Block::BarChart { content } => crate::render::visualizations::bar_chart::draw_bar_chart(
+            ui,
+            content,
+            theme,
+            pos,
+            max_width,
+            0.0,
+            opacity,
+            reveal_step,
+            None,
+            scale,
+        ),
+        Block::LineChart { content } => crate::render::visualizations::line_chart::draw_line_chart(
+            ui,
+            content,
+            theme,
+            pos,
+            max_width,
+            0.0,
+            opacity,
+            reveal_step,
+            None,
+            scale,
+        ),
+        Block::DonutChart { content } => {
+            crate::render::visualizations::donut_chart::draw_donut_chart(
+                ui,
+                content,
+                theme,
+                pos,
+                max_width,
+                0.0,
+                opacity,
+                reveal_step,
+                None,
+                scale,
+            )
+        }
+        Block::KpiCards { content } => crate::render::visualizations::kpi_cards::draw_kpi_cards(
+            ui,
+            content,
+            theme,
+            pos,
+            max_width,
+            0.0,
+            opacity,
+            reveal_step,
+            None,
+            scale,
+        ),
+        Block::FunnelChart { content } => {
+            crate::render::visualizations::funnel_chart::draw_funnel_chart(
+                ui,
+                content,
+                theme,
+                pos,
+                max_width,
+                0.0,
+                opacity,
+                reveal_step,
+                None,
+                scale,
+            )
+        }
+        Block::RadarChart { content } => {
+            crate::render::visualizations::radar_chart::draw_radar_chart(
+                ui,
+                content,
+                theme,
+                pos,
+                max_width,
+                0.0,
+                opacity,
+                reveal_step,
+                None,
+                scale,
+            )
+        }
+        Block::StackedBar { content } => {
+            crate::render::visualizations::stacked_bar::draw_stacked_bar(
+                ui,
+                content,
+                theme,
+                pos,
+                max_width,
+                0.0,
+                opacity,
+                reveal_step,
+                None,
+                scale,
+            )
+        }
+        Block::VennDiagram { content } => {
+            crate::render::visualizations::venn_diagram::draw_venn_diagram(
+                ui,
+                content,
+                theme,
+                pos,
+                max_width,
+                0.0,
+                opacity,
+                reveal_step,
+                None,
+                scale,
+            )
+        }
+        Block::ProgressBars { content } => {
+            crate::render::visualizations::progress_bars::draw_progress_bars(
+                ui,
+                content,
+                theme,
+                pos,
+                max_width,
+                0.0,
+                opacity,
+                reveal_step,
+                None,
+                scale,
+            )
+        }
+        Block::ScatterPlot { content } => {
+            crate::render::visualizations::scatter_plot::draw_scatter_plot(
+                ui,
+                content,
+                theme,
+                pos,
+                max_width,
+                0.0,
+                opacity,
+                reveal_step,
+                None,
+                scale,
+            )
+        }
+        Block::OrgChart { content } => crate::render::visualizations::org_chart::draw_org_chart(
             ui,
             content,
             theme,

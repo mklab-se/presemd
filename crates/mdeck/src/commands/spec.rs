@@ -61,6 +61,27 @@ MOUSE CONTROLS
 
 COLUMN SEPARATOR
   +++   Separates left and right columns in two-column layout
+
+VISUALIZATIONS (fenced code blocks with @ language tag)
+  @barchart      Bar chart (vertical/horizontal, # orientation:, # x-label:, # y-label:)
+  @linechart     Line chart (# x-labels:, # x-label:, # y-label:, multiple series)
+  @scatter       Scatter plot (# x-label:, # y-label:, optional size per point)
+  @stackedbar    Stacked bar (# categories:, # x-label:, # y-label:)
+  @piechart      Pie chart (- Label: value%)
+  @donutchart    Donut chart (# center: text)
+  @wordcloud     Word cloud (- Word (size: N), auto-rotation)
+  @timeline      Timeline (- Year: Event)
+  @funnel        Funnel chart (- Stage: value)
+  @kpi           KPI cards (- Metric: value (trend: up, change: +N%))
+  @progress      Progress bars (- Label: value%)
+  @radar         Radar chart (# axes: A, B, C)
+  @venn          Venn diagram (- Set: item1, item2)
+  @orgchart      Org chart (- Name (parent: Parent))
+
+CHART AXIS LABELS
+  # x-label: text    Horizontal axis label (centered below)
+  # y-label: text    Vertical axis label (rotated 90° CCW)
+  Supported by: @barchart, @linechart, @scatter, @stackedbar
 "#
     );
 }
