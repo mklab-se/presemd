@@ -188,7 +188,7 @@ Features: grid positioning, 20+ built-in icons, 5 arrow types (`->`, `<-`, `<->`
 
 ### Themes
 
-Built-in themes: **light**, **dark**, **solarized**, **dracula**, **nord**, **gruvbox**, and more.
+Built-in themes: **light**, **dark**, and **nord**. Cycle with `Shift+T` during presentation.
 
 Set globally in frontmatter or per-slide:
 
@@ -315,7 +315,7 @@ mdeck ai style set-default   # Set the default image style
 | P / Left | Previous slide |
 | Up / Down | Scroll overflowed content |
 | G | Grid overview |
-| D | Cycle theme |
+| Shift+T | Cycle theme |
 | T | Cycle transition |
 | F | Toggle fullscreen |
 | H | Toggle HUD |

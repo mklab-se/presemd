@@ -4,7 +4,10 @@ use eframe::egui::{self, FontId, Pos2, Stroke};
 
 use crate::theme::Theme;
 
-use super::{VizReveal, assign_steps, parse_reveal_prefix, reveal_anim_progress};
+use super::{
+    VIZ_CORNER_NODE, VIZ_FONT_SECONDARY_LABEL, VIZ_FONT_TITLE, VIZ_LABEL_REVEAL_THRESHOLD,
+    VIZ_OPACITY_FILL, VizReveal, assign_steps, parse_reveal_prefix, reveal_anim_progress,
+};
 
 // ─── Parsing ────────────────────────────────────────────────────────────────
 
@@ -91,8 +94,8 @@ pub fn draw_funnel_chart(
     let min_width_ratio = 0.2; // narrowest trapezoid is at least 20% of max
     let center_x = pos.x + max_width / 2.0;
 
-    let label_font = FontId::proportional(theme.body_size * 0.75 * scale);
-    let value_font = FontId::proportional(theme.body_size * 0.6 * scale);
+    let label_font = FontId::proportional(theme.body_size * VIZ_FONT_TITLE * scale);
+    let value_font = FontId::proportional(theme.body_size * VIZ_FONT_SECONDARY_LABEL * scale);
 
     let mut needs_repaint = false;
 
@@ -107,7 +110,7 @@ pub fn draw_funnel_chart(
             needs_repaint = true;
         }
 
-        let color = Theme::with_opacity(palette[i % palette.len()], opacity * 0.85);
+        let color = Theme::with_opacity(palette[i % palette.len()], opacity * VIZ_OPACITY_FILL);
 
         // Width proportional to value relative to max
         let width_frac = entry.value / max_value;
@@ -133,7 +136,7 @@ pub fn draw_funnel_chart(
 
         // Build a smooth rounded trapezoid using line segments
         // Round the corners with small arcs approximated by extra points
-        let corner_r = (8.0 * scale)
+        let corner_r = (VIZ_CORNER_NODE * scale)
             .min(h * 0.3)
             .min((half_top - half_bot).abs() * 0.3);
 
@@ -156,8 +159,9 @@ pub fn draw_funnel_chart(
         painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
 
         // Label centered in trapezoid (only when sufficiently visible)
-        if anim > 0.5 {
-            let label_opacity = ((anim - 0.5) / 0.5).min(1.0);
+        if anim > VIZ_LABEL_REVEAL_THRESHOLD {
+            let label_opacity =
+                ((anim - VIZ_LABEL_REVEAL_THRESHOLD) / (1.0 - VIZ_LABEL_REVEAL_THRESHOLD)).min(1.0);
             let mid_y = top_y + h / 2.0;
 
             // Entry label

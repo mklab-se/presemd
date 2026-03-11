@@ -5,7 +5,10 @@ use eframe::egui::{self, FontId, Pos2, Stroke};
 
 use crate::theme::Theme;
 
-use super::{VizReveal, assign_steps, parse_reveal_prefix, reveal_anim_progress};
+use super::{
+    VIZ_CORNER_NODE, VIZ_FONT_PRIMARY_LABEL, VIZ_STROKE_BORDER, VIZ_STROKE_SEPARATOR, VizReveal,
+    assign_steps, parse_reveal_prefix, reveal_anim_progress,
+};
 
 // ─── Parsing ────────────────────────────────────────────────────────────────
 
@@ -212,7 +215,7 @@ pub fn draw_org_chart(
 
     let palette = theme.edge_palette();
     let painter = ui.painter();
-    let label_font = FontId::proportional(theme.body_size * 0.7 * scale);
+    let label_font = FontId::proportional(theme.body_size * VIZ_FONT_PRIMARY_LABEL * scale);
 
     let padding = 40.0 * scale;
     let layout = build_layout(
@@ -236,7 +239,7 @@ pub fn draw_org_chart(
     let min_node_w = 120.0 * scale;
     let node_h_padding = 16.0 * scale;
     let node_w_padding = 24.0 * scale;
-    let corner_radius = 8.0 * scale;
+    let corner_radius = VIZ_CORNER_NODE * scale;
 
     // Pre-compute node sizes based on label text width
     let mut node_sizes: HashMap<String, (f32, f32)> = HashMap::new();
@@ -267,7 +270,7 @@ pub fn draw_org_chart(
             node_positions.get(&edge.child),
         ) {
             let edge_color = Theme::with_opacity(theme.foreground, opacity * 0.3 * anim);
-            let stroke = Stroke::new(2.0 * scale, edge_color);
+            let stroke = Stroke::new(VIZ_STROKE_SEPARATOR * scale, edge_color);
 
             let parent_h = node_sizes
                 .get(&edge.parent)
@@ -319,7 +322,7 @@ pub fn draw_org_chart(
         painter.rect_stroke(
             rect,
             corner_radius,
-            Stroke::new(1.5 * scale, border_color),
+            Stroke::new(VIZ_STROKE_BORDER * scale, border_color),
             egui::StrokeKind::Outside,
         );
 

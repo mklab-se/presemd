@@ -5,6 +5,9 @@ use eframe::egui::{self, Color32, FontId, Pos2, Stroke};
 use crate::theme::Theme;
 
 use super::{
+    VIZ_CORNER_BAR, VIZ_FONT_AXIS_LABEL, VIZ_FONT_CATEGORY_LABEL, VIZ_FONT_GRID_LABEL,
+    VIZ_FONT_VALUE_LABEL, VIZ_LABEL_REVEAL_THRESHOLD, VIZ_OPACITY_AXIS, VIZ_OPACITY_FILL,
+    VIZ_OPACITY_GRID, VIZ_OPACITY_GRID_LABEL, VIZ_OPACITY_LABEL, VIZ_STROKE_AXIS, VIZ_STROKE_GRID,
     VizReveal, assign_steps, draw_x_axis_label, draw_y_axis_label, parse_axis_label_directive,
     parse_reveal_prefix, reveal_anim_progress,
 };
@@ -222,19 +225,19 @@ fn draw_vertical(
     let chart_width = max_width - padding * 2.0 - y_label_space;
 
     // Axis line
-    let axis_color = Theme::with_opacity(theme.foreground, opacity * 0.2);
+    let axis_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_AXIS);
     painter.line_segment(
         [
             Pos2::new(chart_left, chart_bottom),
             Pos2::new(chart_left + chart_width, chart_bottom),
         ],
-        Stroke::new(1.5 * scale, axis_color),
+        Stroke::new(VIZ_STROKE_AXIS * scale, axis_color),
     );
 
     // Grid lines with nice round numbers
     let grid_step = nice_grid_step(max_value, 5);
-    let grid_color = Theme::with_opacity(theme.foreground, opacity * 0.08);
-    let grid_font = FontId::proportional(theme.body_size * 0.4 * scale);
+    let grid_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_GRID);
+    let grid_font = FontId::proportional(theme.body_size * VIZ_FONT_GRID_LABEL * scale);
     let mut grid_val = grid_step;
     while grid_val <= max_value {
         let frac = grid_val / max_value;
@@ -244,14 +247,15 @@ fn draw_vertical(
                 Pos2::new(chart_left, gy),
                 Pos2::new(chart_left + chart_width, gy),
             ],
-            Stroke::new(0.5 * scale, grid_color),
+            Stroke::new(VIZ_STROKE_GRID * scale, grid_color),
         );
         let label = if grid_val == grid_val.floor() {
             format!("{:.0}", grid_val)
         } else {
             format!("{:.1}", grid_val)
         };
-        let grid_label_color = Theme::with_opacity(theme.foreground, opacity * 0.4);
+        let grid_label_color =
+            Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_GRID_LABEL);
         let galley = painter.layout_no_wrap(label, grid_font.clone(), grid_label_color);
         painter.galley(
             Pos2::new(
@@ -268,8 +272,8 @@ fn draw_vertical(
     let bar_gap = 12.0 * scale;
     let total_gaps = (n + 1) as f32 * bar_gap;
     let bar_width = ((chart_width - total_gaps) / n as f32).max(8.0 * scale);
-    let label_font = FontId::proportional(theme.body_size * 0.6 * scale);
-    let value_font = FontId::proportional(theme.body_size * 0.55 * scale);
+    let label_font = FontId::proportional(theme.body_size * VIZ_FONT_CATEGORY_LABEL * scale);
+    let value_font = FontId::proportional(theme.body_size * VIZ_FONT_VALUE_LABEL * scale);
 
     for (i, entry) in entries.iter().enumerate() {
         let step = steps.get(i).copied().unwrap_or(0);
@@ -282,7 +286,7 @@ fn draw_vertical(
             needs_repaint = true;
         }
 
-        let color = Theme::with_opacity(palette[i % palette.len()], opacity * 0.85);
+        let color = Theme::with_opacity(palette[i % palette.len()], opacity * VIZ_OPACITY_FILL);
         let full_bar_height = (entry.value / max_value) * chart_height;
         let bar_height = full_bar_height * anim;
         let bx = chart_left + bar_gap + i as f32 * (bar_width + bar_gap);
@@ -291,16 +295,17 @@ fn draw_vertical(
         // Bar with rounded corners
         let bar_rect =
             egui::Rect::from_min_size(Pos2::new(bx, by), egui::vec2(bar_width, bar_height));
-        painter.rect_filled(bar_rect, 4.0 * scale, color);
+        painter.rect_filled(bar_rect, VIZ_CORNER_BAR * scale, color);
 
         // Value label above bar (only show when animation is near-complete)
-        if anim > 0.9 {
+        if anim > VIZ_LABEL_REVEAL_THRESHOLD {
             let val_text = if entry.value == entry.value.floor() {
                 format!("{:.0}", entry.value)
             } else {
                 format!("{:.1}", entry.value)
             };
-            let val_opacity = ((anim - 0.9) / 0.1).min(1.0); // fade in during last 10%
+            let val_opacity =
+                ((anim - VIZ_LABEL_REVEAL_THRESHOLD) / (1.0 - VIZ_LABEL_REVEAL_THRESHOLD)).min(1.0); // fade in during last portion
             let val_color = Theme::with_opacity(theme.foreground, opacity * 0.7 * val_opacity);
             let val_galley = painter.layout_no_wrap(val_text, value_font.clone(), val_color);
             let val_x = bx + (bar_width - val_galley.rect.width()) / 2.0;
@@ -312,7 +317,7 @@ fn draw_vertical(
         }
 
         // Category label below bar
-        let label_color = Theme::with_opacity(theme.foreground, opacity * 0.8);
+        let label_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_LABEL);
         let galley = painter.layout(
             entry.label.clone(),
             label_font.clone(),
@@ -328,7 +333,7 @@ fn draw_vertical(
     }
 
     // Axis labels
-    let axis_label_font = FontId::proportional(theme.body_size * 0.65 * scale);
+    let axis_label_font = FontId::proportional(theme.body_size * VIZ_FONT_AXIS_LABEL * scale);
     let axis_label_color = Theme::with_opacity(theme.foreground, opacity * 0.7);
     if let Some(text) = x_label {
         draw_x_axis_label(
@@ -387,21 +392,21 @@ fn draw_horizontal(
     let chart_height = height - padding * 2.0 - x_label_space;
 
     // Axis line (vertical)
-    let axis_color = Theme::with_opacity(theme.foreground, opacity * 0.2);
+    let axis_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_AXIS);
     painter.line_segment(
         [
             Pos2::new(chart_left, chart_top),
             Pos2::new(chart_left, chart_top + chart_height),
         ],
-        Stroke::new(1.5 * scale, axis_color),
+        Stroke::new(VIZ_STROKE_AXIS * scale, axis_color),
     );
 
     // Bars
     let bar_gap = 10.0 * scale;
     let total_gaps = (n + 1) as f32 * bar_gap;
     let bar_height = ((chart_height - total_gaps) / n as f32).max(8.0 * scale);
-    let label_font = FontId::proportional(theme.body_size * 0.6 * scale);
-    let value_font = FontId::proportional(theme.body_size * 0.55 * scale);
+    let label_font = FontId::proportional(theme.body_size * VIZ_FONT_CATEGORY_LABEL * scale);
+    let value_font = FontId::proportional(theme.body_size * VIZ_FONT_VALUE_LABEL * scale);
 
     for (i, entry) in entries.iter().enumerate() {
         let step = steps.get(i).copied().unwrap_or(0);
@@ -414,7 +419,7 @@ fn draw_horizontal(
             needs_repaint = true;
         }
 
-        let color = Theme::with_opacity(palette[i % palette.len()], opacity * 0.85);
+        let color = Theme::with_opacity(palette[i % palette.len()], opacity * VIZ_OPACITY_FILL);
         let full_bar_w = (entry.value / max_value) * chart_width;
         let bar_w = full_bar_w * anim;
         let by = chart_top + bar_gap + i as f32 * (bar_height + bar_gap);
@@ -422,23 +427,24 @@ fn draw_horizontal(
         // Bar with rounded corners
         let bar_rect =
             egui::Rect::from_min_size(Pos2::new(chart_left, by), egui::vec2(bar_w, bar_height));
-        painter.rect_filled(bar_rect, 4.0 * scale, color);
+        painter.rect_filled(bar_rect, VIZ_CORNER_BAR * scale, color);
 
         // Category label on the left
-        let label_color = Theme::with_opacity(theme.foreground, opacity * 0.8);
+        let label_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_LABEL);
         let galley = painter.layout_no_wrap(entry.label.clone(), label_font.clone(), label_color);
         let lx = chart_left - galley.rect.width() - 10.0 * scale;
         let ly = by + (bar_height - galley.rect.height()) / 2.0;
         painter.galley(Pos2::new(lx, ly), galley, label_color);
 
         // Value label to the right of bar (fade in near end of animation)
-        if anim > 0.9 {
+        if anim > VIZ_LABEL_REVEAL_THRESHOLD {
             let val_text = if entry.value == entry.value.floor() {
                 format!("{:.0}", entry.value)
             } else {
                 format!("{:.1}", entry.value)
             };
-            let val_opacity = ((anim - 0.9) / 0.1).min(1.0);
+            let val_opacity =
+                ((anim - VIZ_LABEL_REVEAL_THRESHOLD) / (1.0 - VIZ_LABEL_REVEAL_THRESHOLD)).min(1.0);
             let val_color = Theme::with_opacity(theme.foreground, opacity * 0.7 * val_opacity);
             let val_galley = painter.layout_no_wrap(val_text, value_font.clone(), val_color);
             let vx = chart_left + bar_w + 8.0 * scale;
@@ -448,7 +454,7 @@ fn draw_horizontal(
     }
 
     // Axis labels
-    let axis_label_font = FontId::proportional(theme.body_size * 0.65 * scale);
+    let axis_label_font = FontId::proportional(theme.body_size * VIZ_FONT_AXIS_LABEL * scale);
     let axis_label_color = Theme::with_opacity(theme.foreground, opacity * 0.7);
     if let Some(text) = x_label {
         draw_x_axis_label(

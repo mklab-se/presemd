@@ -4,7 +4,11 @@ use eframe::egui::{self, FontId, Pos2, Stroke};
 
 use crate::theme::Theme;
 
-use super::{VizReveal, assign_steps, parse_reveal_prefix, reveal_anim_progress};
+use super::{
+    VIZ_CORNER_TRACK, VIZ_FONT_PRIMARY_LABEL, VIZ_FONT_TITLE, VIZ_OPACITY_FILL, VIZ_OPACITY_GRID,
+    VIZ_OPACITY_LABEL, VIZ_STROKE_BORDER, VizReveal, assign_steps, parse_reveal_prefix,
+    reveal_anim_progress,
+};
 
 // ─── Parsing ────────────────────────────────────────────────────────────────
 
@@ -75,8 +79,8 @@ pub fn draw_progress_bars(
     let painter = ui.painter();
 
     let n = entries.len();
-    let label_font = FontId::proportional(theme.body_size * 0.75 * scale);
-    let pct_font = FontId::proportional(theme.body_size * 0.7 * scale);
+    let label_font = FontId::proportional(theme.body_size * VIZ_FONT_TITLE * scale);
+    let pct_font = FontId::proportional(theme.body_size * VIZ_FONT_PRIMARY_LABEL * scale);
 
     // Layout — use generous space for readability from distance
     let padding = 30.0 * scale;
@@ -117,16 +121,16 @@ pub fn draw_progress_bars(
         painter.galley(Pos2::new(label_x, label_y), galley, label_color);
 
         // Track background
-        let track_color = Theme::with_opacity(theme.foreground, opacity * 0.08);
+        let track_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_GRID);
         let track_rect = egui::Rect::from_min_size(
             Pos2::new(bar_left, row_y),
             egui::vec2(bar_width, bar_height),
         );
-        painter.rect_filled(track_rect, 6.0 * scale, track_color);
+        painter.rect_filled(track_rect, VIZ_CORNER_TRACK * scale, track_color);
 
         // Fill bar
         let color = palette[i % palette.len()];
-        let fill_color = Theme::with_opacity(color, opacity * 0.85);
+        let fill_color = Theme::with_opacity(color, opacity * VIZ_OPACITY_FILL);
         let fill_frac = (entry.value / 100.0) * anim;
         let fill_width = bar_width * fill_frac;
         if fill_width > 0.0 {
@@ -134,21 +138,21 @@ pub fn draw_progress_bars(
                 Pos2::new(bar_left, row_y),
                 egui::vec2(fill_width, bar_height),
             );
-            painter.rect_filled(fill_rect, 6.0 * scale, fill_color);
+            painter.rect_filled(fill_rect, VIZ_CORNER_TRACK * scale, fill_color);
         }
 
         // Subtle border on track
-        let border_color = Theme::with_opacity(theme.foreground, opacity * 0.1);
+        let border_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_GRID);
         painter.rect_stroke(
             track_rect,
-            6.0 * scale,
-            Stroke::new(1.0 * scale, border_color),
+            VIZ_CORNER_TRACK * scale,
+            Stroke::new(VIZ_STROKE_BORDER * scale, border_color),
             egui::StrokeKind::Outside,
         );
 
         // Percentage on the right
         let pct_text = format!("{:.0}%", entry.value);
-        let pct_color = Theme::with_opacity(theme.foreground, opacity * 0.8);
+        let pct_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_LABEL);
         let pct_galley = painter.layout_no_wrap(pct_text, pct_font.clone(), pct_color);
         let pct_y = row_y + (bar_height - pct_galley.rect.height()) / 2.0;
         let pct_x = bar_left + bar_width + 12.0 * scale;

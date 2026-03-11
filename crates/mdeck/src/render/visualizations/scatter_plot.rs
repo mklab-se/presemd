@@ -5,7 +5,12 @@ use eframe::epaint::TextShape;
 
 use crate::theme::Theme;
 
-use super::{VizReveal, assign_steps, parse_reveal_prefix, reveal_anim_progress};
+use super::{
+    VIZ_FONT_AXIS_LABEL, VIZ_FONT_GRID_LABEL, VIZ_FONT_SECONDARY_LABEL, VIZ_LABEL_REVEAL_THRESHOLD,
+    VIZ_OPACITY_AXIS, VIZ_OPACITY_FILL, VIZ_OPACITY_GRID, VIZ_OPACITY_GRID_LABEL,
+    VIZ_OPACITY_LABEL, VIZ_SCATTER_RADIUS, VIZ_STROKE_AXIS, VIZ_STROKE_GRID, VizReveal,
+    assign_steps, parse_reveal_prefix, reveal_anim_progress,
+};
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
 
@@ -175,10 +180,10 @@ pub fn draw_scatter_plot(
     let chart_width = chart_right - chart_left;
     let chart_height = chart_bottom - chart_top;
 
-    let axis_color = Theme::with_opacity(theme.foreground, opacity * 0.2);
-    let grid_color = Theme::with_opacity(theme.foreground, opacity * 0.08);
-    let grid_font = FontId::proportional(theme.body_size * 0.55 * scale);
-    let label_font = FontId::proportional(theme.body_size * 0.6 * scale);
+    let axis_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_AXIS);
+    let grid_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_GRID);
+    let grid_font = FontId::proportional(theme.body_size * VIZ_FONT_GRID_LABEL * scale);
+    let label_font = FontId::proportional(theme.body_size * VIZ_FONT_SECONDARY_LABEL * scale);
 
     // Draw axes
     painter.line_segment(
@@ -186,26 +191,26 @@ pub fn draw_scatter_plot(
             Pos2::new(chart_left, chart_bottom),
             Pos2::new(chart_right, chart_bottom),
         ],
-        Stroke::new(1.5 * scale, axis_color),
+        Stroke::new(VIZ_STROKE_AXIS * scale, axis_color),
     );
     painter.line_segment(
         [
             Pos2::new(chart_left, chart_top),
             Pos2::new(chart_left, chart_bottom),
         ],
-        Stroke::new(1.5 * scale, axis_color),
+        Stroke::new(VIZ_STROKE_AXIS * scale, axis_color),
     );
 
     // X-axis grid lines
     let x_step = nice_grid_step(data_x_max - data_x_min, 5);
-    let grid_label_color = Theme::with_opacity(theme.foreground, opacity * 0.4);
+    let grid_label_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_GRID_LABEL);
     let mut gx = (data_x_min / x_step).ceil() * x_step;
     while gx <= data_x_max {
         let frac = (gx - data_x_min) / (data_x_max - data_x_min);
         let px = chart_left + frac * chart_width;
         painter.line_segment(
             [Pos2::new(px, chart_top), Pos2::new(px, chart_bottom)],
-            Stroke::new(0.5 * scale, grid_color),
+            Stroke::new(VIZ_STROKE_GRID * scale, grid_color),
         );
         let label = if gx == gx.floor() {
             format!("{:.0}", gx)
@@ -229,7 +234,7 @@ pub fn draw_scatter_plot(
         let py = chart_bottom - frac * chart_height;
         painter.line_segment(
             [Pos2::new(chart_left, py), Pos2::new(chart_right, py)],
-            Stroke::new(0.5 * scale, grid_color),
+            Stroke::new(VIZ_STROKE_GRID * scale, grid_color),
         );
         let label = if gy == gy.floor() {
             format!("{:.0}", gy)
@@ -249,7 +254,7 @@ pub fn draw_scatter_plot(
     }
 
     // Draw axis labels
-    let axis_label_font = FontId::proportional(theme.body_size * 0.65 * scale);
+    let axis_label_font = FontId::proportional(theme.body_size * VIZ_FONT_AXIS_LABEL * scale);
     let axis_label_color = Theme::with_opacity(theme.foreground, opacity * 0.7);
 
     if let Some(ref x_label_text) = data.x_label {
@@ -279,7 +284,7 @@ pub fn draw_scatter_plot(
 
     // Draw data points
     let mut needs_repaint = false;
-    let default_radius = 8.0 * scale;
+    let default_radius = VIZ_SCATTER_RADIUS * scale;
 
     for (i, point) in points.iter().enumerate() {
         let step = steps.get(i).copied().unwrap_or(0);
@@ -298,14 +303,18 @@ pub fn draw_scatter_plot(
         let py = chart_bottom - fy * chart_height;
 
         let radius = point.size.map_or(default_radius, |s| s * scale * 0.5) * anim;
-        let color = Theme::with_opacity(palette[i % palette.len()], opacity * 0.85);
+        let color = Theme::with_opacity(palette[i % palette.len()], opacity * VIZ_OPACITY_FILL);
 
         painter.circle_filled(Pos2::new(px, py), radius, color);
 
         // Label near the dot
-        if anim > 0.5 {
-            let label_opacity = ((anim - 0.5) / 0.5).min(1.0);
-            let label_color = Theme::with_opacity(theme.foreground, opacity * 0.8 * label_opacity);
+        if anim > VIZ_LABEL_REVEAL_THRESHOLD {
+            let label_opacity =
+                ((anim - VIZ_LABEL_REVEAL_THRESHOLD) / (1.0 - VIZ_LABEL_REVEAL_THRESHOLD)).min(1.0);
+            let label_color = Theme::with_opacity(
+                theme.foreground,
+                opacity * VIZ_OPACITY_LABEL * label_opacity,
+            );
             let galley =
                 painter.layout_no_wrap(point.label.clone(), label_font.clone(), label_color);
             painter.galley(

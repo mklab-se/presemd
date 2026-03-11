@@ -4,7 +4,11 @@ use eframe::egui::{self, Color32, FontId, Pos2, Stroke};
 
 use crate::theme::Theme;
 
-use super::{VizReveal, assign_steps, parse_reveal_prefix, reveal_anim_progress};
+use super::{
+    VIZ_CORNER_SWATCH, VIZ_DOT_RADIUS, VIZ_FONT_AXIS_LABEL, VIZ_FONT_LEGEND, VIZ_OPACITY_LABEL,
+    VIZ_STROKE_SEPARATOR, VIZ_SWATCH_SIZE, VizReveal, assign_steps, parse_reveal_prefix,
+    reveal_anim_progress,
+};
 
 // ─── Parsing ────────────────────────────────────────────────────────────────
 
@@ -139,8 +143,8 @@ pub fn draw_radar_chart(
 
     // Draw axis lines (spokes of the spider web)
     let axis_line_color = Theme::with_opacity(theme.foreground, opacity * 0.3);
-    let axis_label_font = FontId::proportional(theme.body_size * 0.75 * scale);
-    let label_color = Theme::with_opacity(theme.foreground, opacity * 0.8);
+    let axis_label_font = FontId::proportional(theme.body_size * VIZ_FONT_AXIS_LABEL * scale);
+    let label_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_LABEL);
 
     for (i, axis_name) in data.axes.iter().enumerate() {
         let angle = start_angle + i as f32 * angle_step;
@@ -208,20 +212,20 @@ pub fn draw_radar_chart(
             painter.add(egui::Shape::convex_polygon(
                 points.clone(),
                 fill_color,
-                Stroke::new(2.0 * scale, stroke_color),
+                Stroke::new(VIZ_STROKE_SEPARATOR * scale, stroke_color),
             ));
         }
 
         // Dots at vertices
-        let dot_radius = 4.0 * scale;
+        let dot_radius = VIZ_DOT_RADIUS * scale;
         for point in &points {
             painter.circle_filled(*point, dot_radius, stroke_color);
         }
     }
 
     // Draw legend at bottom
-    let legend_font = FontId::proportional(theme.body_size * 0.65 * scale);
-    let swatch_size = 18.0 * scale;
+    let legend_font = FontId::proportional(theme.body_size * VIZ_FONT_LEGEND * scale);
+    let swatch_size = VIZ_SWATCH_SIZE * scale;
     let item_spacing = 28.0 * scale;
 
     // Calculate total legend width to center it
@@ -261,7 +265,7 @@ pub fn draw_radar_chart(
                 Pos2::new(lx, legend_y + (legend_height - swatch_size) / 2.0),
                 egui::vec2(swatch_size, swatch_size),
             );
-            painter.rect_filled(swatch_rect, 2.0 * scale, color);
+            painter.rect_filled(swatch_rect, VIZ_CORNER_SWATCH * scale, color);
             lx += swatch_size + 6.0 * scale;
 
             let text_y = legend_y + (legend_height - galley.rect.height()) / 2.0;

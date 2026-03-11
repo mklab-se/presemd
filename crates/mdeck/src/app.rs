@@ -357,7 +357,7 @@ impl PresentationApp {
     }
 
     fn toggle_theme(&mut self) {
-        self.theme = self.theme.toggled();
+        self.theme = self.theme.next();
         self.toast = Some(Toast::new(format!("Theme: {}", self.theme.name)));
     }
 
@@ -947,14 +947,14 @@ impl eframe::App for PresentationApp {
                 return;
             }
 
-            // Theme toggle: D (from any mode)
-            if i.key_pressed(egui::Key::D) {
+            // Cycle theme: Shift+T (from any mode)
+            if i.modifiers.shift && i.key_pressed(egui::Key::T) {
                 self.toggle_theme();
                 return;
             }
 
             // Cycle transition: T (from any mode)
-            if i.key_pressed(egui::Key::T) {
+            if !i.modifiers.shift && i.key_pressed(egui::Key::T) {
                 self.cycle_transition();
                 return;
             }
@@ -2030,7 +2030,7 @@ fn draw_hud(ui: &egui::Ui, theme: &Theme, rect: egui::Rect, scale: f32) {
         ("Esc", "Clear drawings / \u{00d7}2 exit"),
         ("G", "Grid view / overview"),
         ("T", "Cycle transition"),
-        ("D", "Toggle theme"),
+        ("⇧T", "Cycle theme"),
         ("F", "Toggle fullscreen"),
         ("H", "Toggle this HUD"),
         (".", "Blackout screen"),

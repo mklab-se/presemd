@@ -4,7 +4,11 @@ use eframe::egui::{self, FontId, Pos2, Stroke};
 
 use crate::theme::Theme;
 
-use super::{VizReveal, assign_steps, parse_reveal_prefix, reveal_anim_progress};
+use super::{
+    VIZ_CORNER_SWATCH, VIZ_FONT_LEGEND, VIZ_OPACITY_BORDER_RING, VIZ_OPACITY_FILL,
+    VIZ_STROKE_BORDER, VIZ_STROKE_SEPARATOR, VIZ_SWATCH_SIZE, VizReveal, assign_steps,
+    parse_reveal_prefix, reveal_anim_progress,
+};
 
 // ─── Parsing ────────────────────────────────────────────────────────────────
 
@@ -123,7 +127,7 @@ pub fn draw_donut_chart(
 
         let full_sweep = (entry.value / total) * 2.0 * std::f32::consts::PI;
         let sweep = full_sweep * anim;
-        let color = Theme::with_opacity(palette[i % palette.len()], opacity * 0.85);
+        let color = Theme::with_opacity(palette[i % palette.len()], opacity * VIZ_OPACITY_FILL);
 
         // Draw filled arc as triangle fan (outer arc)
         let segments = ((segment_count as f32 * (entry.value / total) * anim) as usize).max(4);
@@ -170,7 +174,10 @@ pub fn draw_donut_chart(
             donut_cx + (outer_radius + 1.0) * end_angle.cos(),
             donut_cy + (outer_radius + 1.0) * end_angle.sin(),
         );
-        painter.line_segment([sep_inner, sep_outer], Stroke::new(2.0 * scale, bg_color));
+        painter.line_segment(
+            [sep_inner, sep_outer],
+            Stroke::new(VIZ_STROKE_SEPARATOR * scale, bg_color),
+        );
 
         angle_offset += sweep;
     }
@@ -183,11 +190,11 @@ pub fn draw_donut_chart(
     painter.circle_filled(Pos2::new(donut_cx, donut_cy), inner_radius, bg_color);
 
     // Draw subtle border rings
-    let ring_color = Theme::with_opacity(theme.foreground, opacity * 0.15);
+    let ring_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_BORDER_RING);
     painter.circle_stroke(
         Pos2::new(donut_cx, donut_cy),
         outer_radius,
-        Stroke::new(1.5 * scale, ring_color),
+        Stroke::new(VIZ_STROKE_BORDER * scale, ring_color),
     );
     painter.circle_stroke(
         Pos2::new(donut_cx, donut_cy),
@@ -215,8 +222,8 @@ pub fn draw_donut_chart(
     let legend_item_height = 48.0 * scale;
     let total_legend_height = entries.len() as f32 * legend_item_height;
     let legend_start_y = pos.y + (height - total_legend_height) / 2.0;
-    let swatch_size = 20.0 * scale;
-    let label_font = FontId::proportional(theme.body_size * 0.65 * scale);
+    let swatch_size = VIZ_SWATCH_SIZE * scale;
+    let label_font = FontId::proportional(theme.body_size * VIZ_FONT_LEGEND * scale);
 
     for (i, entry) in entries.iter().enumerate() {
         let step = steps.get(i).copied().unwrap_or(0);
@@ -225,14 +232,14 @@ pub fn draw_donut_chart(
         }
 
         let ly = legend_start_y + i as f32 * legend_item_height;
-        let color = Theme::with_opacity(palette[i % palette.len()], opacity * 0.85);
+        let color = Theme::with_opacity(palette[i % palette.len()], opacity * VIZ_OPACITY_FILL);
 
         // Color swatch
         let swatch_rect = egui::Rect::from_min_size(
             Pos2::new(legend_x, ly + (legend_item_height - swatch_size) / 2.0),
             egui::vec2(swatch_size, swatch_size),
         );
-        painter.rect_filled(swatch_rect, 3.0 * scale, color);
+        painter.rect_filled(swatch_rect, VIZ_CORNER_SWATCH * scale, color);
 
         // Label + percentage
         let pct = entry.value / total * 100.0;

@@ -4,7 +4,11 @@ use eframe::egui::{self, FontId, Pos2, Stroke};
 
 use crate::theme::Theme;
 
-use super::{VizReveal, assign_steps, parse_reveal_prefix, reveal_anim_progress};
+use super::{
+    VIZ_CORNER_BAR, VIZ_FONT_GRID_LABEL, VIZ_FONT_SECONDARY_LABEL, VIZ_FONT_TITLE,
+    VIZ_LABEL_REVEAL_THRESHOLD, VIZ_OPACITY_GRID, VIZ_STROKE_AXIS, VIZ_STROKE_CONNECTOR,
+    VIZ_STROKE_GRID, VizReveal, assign_steps, parse_reveal_prefix, reveal_anim_progress,
+};
 
 // ─── Date Arithmetic ────────────────────────────────────────────────────────
 
@@ -520,7 +524,7 @@ pub fn draw_gantt_chart(
 
     // Title
     if let Some(ref title_text) = data.title {
-        let title_font = FontId::proportional(theme.body_size * 0.75 * scale);
+        let title_font = FontId::proportional(theme.body_size * VIZ_FONT_TITLE * scale);
         let title_color = Theme::with_opacity(theme.foreground, opacity * 0.9);
         let galley = painter.layout_no_wrap(title_text.clone(), title_font, title_color);
         let tx = pos.x + (max_width - galley.rect.width()) / 2.0;
@@ -528,8 +532,8 @@ pub fn draw_gantt_chart(
     }
 
     // Grid lines and date labels
-    let grid_color = Theme::with_opacity(theme.foreground, opacity * 0.06);
-    let label_font = FontId::proportional(theme.body_size * 0.50 * scale);
+    let grid_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_GRID);
+    let label_font = FontId::proportional(theme.body_size * VIZ_FONT_GRID_LABEL * scale);
     let label_color = Theme::with_opacity(theme.foreground, opacity * 0.45);
 
     for (frac, label_text) in &time_grid.labels {
@@ -538,7 +542,7 @@ pub fn draw_gantt_chart(
         // Vertical grid line
         painter.line_segment(
             [Pos2::new(x, chart_top), Pos2::new(x, chart_bottom)],
-            Stroke::new(0.5 * scale, grid_color),
+            Stroke::new(VIZ_STROKE_GRID * scale, grid_color),
         );
 
         // Date label
@@ -579,17 +583,17 @@ pub fn draw_gantt_chart(
             Pos2::new(chart_left, chart_bottom),
             Pos2::new(chart_left + chart_width, chart_bottom),
         ],
-        Stroke::new(1.0 * scale, axis_color),
+        Stroke::new(VIZ_STROKE_AXIS * scale, axis_color),
     );
 
     // Task bars
     let total_tasks = resolved.len();
     let row_height = (chart_height / total_tasks as f32).min(50.0 * scale);
     let bar_height = (row_height * 0.55).min(32.0 * scale).max(12.0 * scale);
-    let bar_corner = 3.0 * scale;
+    let bar_corner = VIZ_CORNER_BAR * scale;
 
-    let task_name_font = FontId::proportional(theme.body_size * 0.55 * scale);
-    let bar_label_font = FontId::proportional(theme.body_size * 0.50 * scale);
+    let task_name_font = FontId::proportional(theme.body_size * VIZ_FONT_SECONDARY_LABEL * scale);
+    let bar_label_font = FontId::proportional(theme.body_size * VIZ_FONT_GRID_LABEL * scale);
 
     // Center tasks vertically if they don't fill the chart
     let total_task_height = total_tasks as f32 * row_height;
@@ -660,8 +664,9 @@ pub fn draw_gantt_chart(
         );
 
         // Bar label: task name inside (inside mode) or duration (side mode)
-        if anim > 0.7 {
-            let label_opacity = ((anim - 0.7) / 0.3).min(1.0);
+        if anim > VIZ_LABEL_REVEAL_THRESHOLD {
+            let label_opacity =
+                ((anim - VIZ_LABEL_REVEAL_THRESHOLD) / (1.0 - VIZ_LABEL_REVEAL_THRESHOLD)).min(1.0);
 
             if data.labels == LabelMode::Inside {
                 // Task name inside bar, with duration suffix
@@ -745,7 +750,7 @@ pub fn draw_gantt_chart(
                 let arrow_end_y = bar_y + bar_height / 2.0;
 
                 let arrow_color = Theme::with_opacity(theme.foreground, opacity * 0.25 * anim);
-                let arrow_stroke = Stroke::new(1.5 * scale, arrow_color);
+                let arrow_stroke = Stroke::new(VIZ_STROKE_CONNECTOR * scale, arrow_color);
 
                 // Draw L-shaped connector
                 let mid_x = (arrow_start_x + arrow_end_x) / 2.0;

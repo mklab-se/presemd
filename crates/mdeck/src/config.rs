@@ -236,8 +236,10 @@ impl Config {
         match key {
             "defaults.theme" => {
                 match value {
-                    "light" | "dark" => {}
-                    _ => anyhow::bail!("Invalid theme: {value}. Must be 'light' or 'dark'."),
+                    "light" | "dark" | "nord" => {}
+                    _ => {
+                        anyhow::bail!("Invalid theme: {value}. Must be 'light', 'dark', or 'nord'.")
+                    }
                 }
                 self.defaults
                     .get_or_insert_with(DefaultsConfig::default)

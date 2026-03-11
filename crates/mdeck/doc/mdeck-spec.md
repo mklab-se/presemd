@@ -55,7 +55,7 @@ date: 2026-02-28
 
 | Field         | Type   | Default   | Description                                        |
 |---------------|--------|-----------|----------------------------------------------------|
-| `@theme`      | string | `"light"` | Global theme: `"light"`, `"dark"`, or custom name  |
+| `@theme`      | string | `"light"` | Global theme: `"light"`, `"dark"`, `"nord"`, or custom name  |
 | `@transition` | string | `"slide"` | Default transition: `"fade"`, `"slide"`, `"none"`  |
 | `@aspect`     | string | `"16:9"`  | Aspect ratio: `"16:9"`, `"4:3"`, `"16:10"`        |
 | `@code-theme`  | string | (theme)   | Syntax highlighting theme for code blocks          |
@@ -503,7 +503,7 @@ For complex content, the fenced code block syntax with `@` on the language tag:
 
 | Directive      | Scope          | Values                                    | Default        |
 |----------------|----------------|-------------------------------------------|----------------|
-| `@theme`       | global, slide  | `light`, `dark`, custom name              | `light`        |
+| `@theme`       | global, slide  | `light`, `dark`, `nord`, custom name      | `light`        |
 | `@transition`  | global, slide  | `fade`, `slide`, `none`                   | `slide`        |
 | `@layout`      | slide          | layout name (see Section 4.1)             | auto-inferred  |
 | `@background`  | slide          | color hex or image path                   | theme default  |

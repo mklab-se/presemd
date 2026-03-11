@@ -51,18 +51,39 @@ impl Theme {
         }
     }
 
+    /// Nord: an arctic, blue-gray theme inspired by the polar landscape.
+    /// Calm, muted, and professional — distinct from both dark and light.
+    pub fn nord() -> Self {
+        Self {
+            name: "nord".to_string(),
+            background: Color32::from_rgb(0x2E, 0x34, 0x40), // Polar Night
+            foreground: Color32::from_rgb(0xD8, 0xDE, 0xE9), // Snow Storm
+            heading_color: Color32::from_rgb(0xEC, 0xEF, 0xF4), // Snow Storm bright
+            accent: Color32::from_rgb(0x81, 0xA1, 0xC1),     // Frost medium blue
+            code_background: Color32::from_rgb(0x3B, 0x42, 0x52), // Polar Night lighter
+            code_foreground: Color32::from_rgb(0xD8, 0xDE, 0xE9), // Snow Storm
+            h1_size: 96.0,
+            h2_size: 72.0,
+            h3_size: 52.0,
+            body_size: 44.0,
+            code_size: 30.0,
+        }
+    }
+
     pub fn from_name(name: &str) -> Self {
         match name {
             "dark" => Self::dark(),
+            "nord" => Self::nord(),
             _ => Self::light(),
         }
     }
 
-    pub fn toggled(&self) -> Self {
-        if self.name == "dark" {
-            Self::light()
-        } else {
-            Self::dark()
+    /// Cycle to the next theme: dark → light → nord → dark.
+    pub fn next(&self) -> Self {
+        match self.name.as_str() {
+            "dark" => Self::light(),
+            "light" => Self::nord(),
+            _ => Self::dark(),
         }
     }
 
@@ -82,29 +103,37 @@ impl Theme {
 
     /// Return the syntect theme name that matches this presentation theme.
     pub fn syntect_theme_name(&self) -> &str {
-        if self.name == "dark" {
-            "base16-ocean.dark"
-        } else {
+        if self.name == "light" {
             "InspiredGitHub"
+        } else {
+            // Both dark and nord use the same syntect theme
+            "base16-ocean.dark"
         }
     }
 
-    /// Return a palette of distinct colors for diagram edges.
+    /// Theme-aware positive trend color (green).
+    pub fn positive_color(&self) -> Color32 {
+        match self.name.as_str() {
+            "light" => Color32::from_rgb(0x16, 0x7A, 0x3E), // dark green on light bg
+            "nord" => Color32::from_rgb(0xA3, 0xBE, 0x8C),  // aurora green
+            _ => Color32::from_rgb(0x5C, 0xDB, 0x95),       // mint green on dark bg
+        }
+    }
+
+    /// Theme-aware negative trend color (red).
+    pub fn negative_color(&self) -> Color32 {
+        match self.name.as_str() {
+            "light" => Color32::from_rgb(0xB9, 0x2D, 0x2D), // dark red on light bg
+            "nord" => Color32::from_rgb(0xBF, 0x61, 0x6A),  // aurora red
+            _ => Color32::from_rgb(0xFF, 0x6B, 0x6B),       // bright red on dark bg
+        }
+    }
+
+    /// Return a palette of distinct colors for diagram edges and visualizations.
     /// Colors are chosen to be visually distinct and readable against the theme background.
     pub fn edge_palette(&self) -> Vec<Color32> {
-        if self.name == "dark" {
-            vec![
-                Color32::from_rgb(0x5C, 0xB8, 0xFF), // bright blue
-                Color32::from_rgb(0xFF, 0x7E, 0x67), // coral
-                Color32::from_rgb(0x5C, 0xDB, 0x95), // mint green
-                Color32::from_rgb(0xE8, 0xA8, 0x38), // amber
-                Color32::from_rgb(0xC0, 0x7E, 0xF1), // purple
-                Color32::from_rgb(0x4E, 0xD4, 0xD4), // teal
-                Color32::from_rgb(0xF0, 0x6E, 0xAA), // pink
-                Color32::from_rgb(0xA3, 0xBE, 0x58), // olive green
-            ]
-        } else {
-            vec![
+        match self.name.as_str() {
+            "light" => vec![
                 Color32::from_rgb(0x1A, 0x6B, 0xB5), // deep blue
                 Color32::from_rgb(0xC7, 0x3E, 0x1D), // brick red
                 Color32::from_rgb(0x1E, 0x8A, 0x5A), // forest green
@@ -113,7 +142,28 @@ impl Theme {
                 Color32::from_rgb(0x18, 0x8A, 0x8D), // teal
                 Color32::from_rgb(0xC4, 0x3B, 0x7A), // magenta
                 Color32::from_rgb(0x5A, 0x7A, 0x2B), // olive
-            ]
+            ],
+            "nord" => vec![
+                Color32::from_rgb(0x88, 0xC0, 0xD0), // frost teal
+                Color32::from_rgb(0xBF, 0x61, 0x6A), // aurora red
+                Color32::from_rgb(0xA3, 0xBE, 0x8C), // aurora green
+                Color32::from_rgb(0xEB, 0xCB, 0x8B), // aurora yellow
+                Color32::from_rgb(0xB4, 0x8E, 0xAD), // aurora purple
+                Color32::from_rgb(0x5E, 0x81, 0xAC), // frost blue
+                Color32::from_rgb(0xD0, 0x87, 0x70), // aurora orange
+                Color32::from_rgb(0x8F, 0xBC, 0xBB), // frost light teal
+            ],
+            _ => vec![
+                // dark
+                Color32::from_rgb(0x5C, 0xB8, 0xFF), // bright blue
+                Color32::from_rgb(0xFF, 0x7E, 0x67), // coral
+                Color32::from_rgb(0x5C, 0xDB, 0x95), // mint green
+                Color32::from_rgb(0xE8, 0xA8, 0x38), // amber
+                Color32::from_rgb(0xC0, 0x7E, 0xF1), // purple
+                Color32::from_rgb(0x4E, 0xD4, 0xD4), // teal
+                Color32::from_rgb(0xF0, 0x6E, 0xAA), // pink
+                Color32::from_rgb(0xA3, 0xBE, 0x58), // olive green
+            ],
         }
     }
 }

@@ -56,7 +56,7 @@ crates/
         transition.rs # Slide transitions (fade, slide, spatial) with easing
         layouts/     # Layout strategies (title, section, bullet, code, content, two_column, quote, image_slide)
         image_cache.rs # Async image loading and caching
-      theme.rs       # Theme definitions (light, dark, solarized, etc.)
+      theme.rs       # Theme definitions (light, dark, nord)
       prompt.rs      # AI prompt construction helpers (image/icon style + orientation)
     doc/
       mdeck-spec.md  # Markdown format specification (included via include_str!)
@@ -109,7 +109,7 @@ mdeck --help                 # Show help
 - **PNG export:** Headless eframe window using `ViewportCommand::Screenshot` / `Event::Screenshot`
 - **Transitions:** fade, horizontal slide, spatial (directional pan), with smooth easing; animated overview zoom in/out
 - **Scroll/overflow:** Per-slide smooth animated scroll with fade gradients; Up/Down keys; `scroll_targets` + lerp for animation
-- **Keyboard:** Space/N/Right forward, P/Left back, Up/Down scroll, G grid, T transition, D theme, F fullscreen, H HUD, `.` blackout, Esc×2 exit
+- **Keyboard:** Space/N/Right forward, P/Left back, Up/Down scroll, G grid, T transition, Shift+T theme, F fullscreen, H HUD, `.` blackout, Esc×2 exit
 - **End slide:** Virtual "The End" slide with MDeck logo shown when navigating past the last slide
 - **Diagrams:** Grid layout (when `pos:` specified) or auto-layout; geometric fallback icons; AI-generated icon images from `media/diagram-icons/`; 5 arrow types (`->`, `<-`, `<->`, `--`, `-->`)
 - **AI integration:** `ailloy` crate for unified AI access (chat + image generation); config via `~/.config/ailloy/config.yaml`; async via `tokio`

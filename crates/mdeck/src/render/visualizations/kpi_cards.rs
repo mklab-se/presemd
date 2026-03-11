@@ -1,10 +1,13 @@
 use std::time::Instant;
 
-use eframe::egui::{self, Color32, FontId, Pos2};
+use eframe::egui::{self, FontId, Pos2};
 
 use crate::theme::Theme;
 
-use super::{VizReveal, assign_steps, parse_reveal_prefix, reveal_anim_progress};
+use super::{
+    VIZ_CORNER_CARD, VIZ_FONT_PRIMARY_LABEL, VIZ_FONT_SECONDARY_LABEL, VIZ_OPACITY_SUBTLE_BG,
+    VizReveal, assign_steps, parse_reveal_prefix, reveal_anim_progress,
+};
 
 // ─── Parsing ────────────────────────────────────────────────────────────────
 
@@ -101,8 +104,8 @@ pub fn draw_kpi_cards(
     let card_y = pos.y + (height - card_height) / 2.0;
 
     let value_font = FontId::proportional(theme.body_size * 2.0 * scale);
-    let label_font = FontId::proportional(theme.body_size * 0.7 * scale);
-    let trend_font = FontId::proportional(theme.body_size * 0.6 * scale);
+    let label_font = FontId::proportional(theme.body_size * VIZ_FONT_PRIMARY_LABEL * scale);
+    let trend_font = FontId::proportional(theme.body_size * VIZ_FONT_SECONDARY_LABEL * scale);
 
     let mut needs_repaint = false;
 
@@ -121,12 +124,12 @@ pub fn draw_kpi_cards(
         let item_opacity = opacity * anim;
 
         // Card background
-        let bg_color = Theme::with_opacity(theme.foreground, item_opacity * 0.05);
+        let bg_color = Theme::with_opacity(theme.foreground, item_opacity * VIZ_OPACITY_SUBTLE_BG);
         let card_rect = egui::Rect::from_min_size(
             Pos2::new(card_x, card_y),
             egui::vec2(card_width, card_height),
         );
-        painter.rect_filled(card_rect, 12.0 * scale, bg_color);
+        painter.rect_filled(card_rect, VIZ_CORNER_CARD * scale, bg_color);
 
         // Value text (centered, large)
         let text_color = Theme::with_opacity(theme.foreground, item_opacity);
@@ -157,9 +160,9 @@ pub fn draw_kpi_cards(
             let is_positive = trend.starts_with('+');
             let is_negative = trend.starts_with('-');
             let trend_color = if is_positive {
-                Theme::with_opacity(Color32::from_rgb(34, 197, 94), item_opacity)
+                Theme::with_opacity(theme.positive_color(), item_opacity)
             } else if is_negative {
-                Theme::with_opacity(Color32::from_rgb(239, 68, 68), item_opacity)
+                Theme::with_opacity(theme.negative_color(), item_opacity)
             } else {
                 Theme::with_opacity(theme.foreground, item_opacity * 0.6)
             };

@@ -4,7 +4,10 @@ use eframe::egui::{self, FontId, Pos2, Stroke};
 
 use crate::theme::Theme;
 
-use super::{VizReveal, assign_steps, parse_reveal_prefix, reveal_anim_progress};
+use super::{
+    VIZ_FONT_PRIMARY_LABEL, VIZ_FONT_SECONDARY_LABEL, VIZ_STROKE_SEPARATOR, VizReveal,
+    assign_steps, parse_reveal_prefix, reveal_anim_progress,
+};
 
 // ─── Parsing ────────────────────────────────────────────────────────────────
 
@@ -166,8 +169,8 @@ pub fn draw_venn_diagram(
     };
 
     let mut needs_repaint = false;
-    let label_font = FontId::proportional(theme.body_size * 0.7 * scale);
-    let inter_font = FontId::proportional(theme.body_size * 0.55 * scale);
+    let label_font = FontId::proportional(theme.body_size * VIZ_FONT_PRIMARY_LABEL * scale);
+    let inter_font = FontId::proportional(theme.body_size * VIZ_FONT_SECONDARY_LABEL * scale);
 
     // Draw circles
     for (i, circle) in circles.iter().enumerate() {
@@ -188,7 +191,11 @@ pub fn draw_venn_diagram(
         let center = centers[i];
 
         painter.circle_filled(center, radius, fill_color);
-        painter.circle_stroke(center, radius, Stroke::new(2.5 * scale, stroke_color));
+        painter.circle_stroke(
+            center,
+            radius,
+            Stroke::new(VIZ_STROKE_SEPARATOR * scale, stroke_color),
+        );
 
         // Label in the non-overlapping region (offset away from center)
         let label_offset_x = (center.x - cx) * 0.4;

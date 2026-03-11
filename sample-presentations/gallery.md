@@ -28,7 +28,7 @@ This is a title layout — a heading with a short subtitle.
 - Write slides in **standard markdown**
 - Layout is *inferred* from content structure
 - Supports code highlighting, images, and diagrams
-- Built-in themes: light, dark, solarized, and more
+- Built-in themes: light, dark, and nord
 - Export slides as PNG with `mdeck export`
 
 ---

@@ -21,6 +21,54 @@ pub mod word_cloud;
 
 const REVEAL_ANIMATION_DURATION: f32 = 0.4; // seconds
 
+// ─── Standardized visualization design tokens ──────────────────────────────
+// All visualizations use these constants for visual consistency within a theme.
+
+// Font size multipliers (of theme.body_size * scale)
+pub const VIZ_FONT_GRID_LABEL: f32 = 0.50;
+pub const VIZ_FONT_CATEGORY_LABEL: f32 = 0.65;
+pub const VIZ_FONT_VALUE_LABEL: f32 = 0.55;
+pub const VIZ_FONT_AXIS_LABEL: f32 = 0.65;
+pub const VIZ_FONT_LEGEND: f32 = 0.65;
+pub const VIZ_FONT_PRIMARY_LABEL: f32 = 0.70;
+pub const VIZ_FONT_SECONDARY_LABEL: f32 = 0.55;
+pub const VIZ_FONT_TITLE: f32 = 0.75;
+
+// Stroke widths (multiplied by scale)
+pub const VIZ_STROKE_AXIS: f32 = 1.5;
+pub const VIZ_STROKE_GRID: f32 = 0.5;
+pub const VIZ_STROKE_DATA_LINE: f32 = 2.5;
+pub const VIZ_STROKE_BORDER: f32 = 1.5;
+pub const VIZ_STROKE_CONNECTOR: f32 = 1.5;
+pub const VIZ_STROKE_SEPARATOR: f32 = 2.0;
+
+// Corner radii (multiplied by scale)
+pub const VIZ_CORNER_BAR: f32 = 4.0;
+pub const VIZ_CORNER_CARD: f32 = 12.0;
+pub const VIZ_CORNER_NODE: f32 = 8.0;
+pub const VIZ_CORNER_TRACK: f32 = 6.0;
+pub const VIZ_CORNER_SWATCH: f32 = 3.0;
+
+// Legend swatch size (multiplied by scale)
+pub const VIZ_SWATCH_SIZE: f32 = 18.0;
+
+// Dot/point radii (multiplied by scale)
+pub const VIZ_DOT_RADIUS: f32 = 4.0;
+pub const VIZ_SCATTER_RADIUS: f32 = 8.0;
+pub const VIZ_TIMELINE_DOT: f32 = 8.0;
+
+// Opacity multipliers (applied to base opacity)
+pub const VIZ_OPACITY_FILL: f32 = 0.85;
+pub const VIZ_OPACITY_GRID: f32 = 0.08;
+pub const VIZ_OPACITY_AXIS: f32 = 0.2;
+pub const VIZ_OPACITY_LABEL: f32 = 0.8;
+pub const VIZ_OPACITY_GRID_LABEL: f32 = 0.4;
+pub const VIZ_OPACITY_SUBTLE_BG: f32 = 0.05;
+pub const VIZ_OPACITY_BORDER_RING: f32 = 0.15;
+
+// Animation threshold for showing value labels
+pub const VIZ_LABEL_REVEAL_THRESHOLD: f32 = 0.8;
+
 /// Compute eased animation progress (0.0→1.0) for an element revealed at `item_step`.
 /// Returns `(progress, needs_repaint)`.
 pub fn reveal_anim_progress(

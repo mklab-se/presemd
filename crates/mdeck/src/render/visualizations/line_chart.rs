@@ -5,8 +5,11 @@ use eframe::egui::{self, FontId, Pos2, Stroke};
 use crate::theme::Theme;
 
 use super::{
-    VizReveal, assign_steps, draw_x_axis_label, draw_y_axis_label, parse_axis_label_directive,
-    parse_reveal_prefix, reveal_anim_progress,
+    VIZ_DOT_RADIUS, VIZ_FONT_AXIS_LABEL, VIZ_FONT_GRID_LABEL, VIZ_FONT_LEGEND, VIZ_OPACITY_AXIS,
+    VIZ_OPACITY_FILL, VIZ_OPACITY_GRID, VIZ_OPACITY_GRID_LABEL, VIZ_STROKE_AXIS,
+    VIZ_STROKE_DATA_LINE, VIZ_STROKE_GRID, VIZ_SWATCH_SIZE, VizReveal, assign_steps,
+    draw_x_axis_label, draw_y_axis_label, parse_axis_label_directive, parse_reveal_prefix,
+    reveal_anim_progress,
 };
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
@@ -176,9 +179,9 @@ pub fn draw_line_chart(
 
     // Draw grid lines with nice numbers
     let grid_step = nice_grid_step(max_value, 5);
-    let grid_color = Theme::with_opacity(theme.foreground, opacity * 0.08);
-    let grid_font = FontId::proportional(theme.body_size * 0.5 * scale);
-    let grid_label_color = Theme::with_opacity(theme.foreground, opacity * 0.4);
+    let grid_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_GRID);
+    let grid_font = FontId::proportional(theme.body_size * VIZ_FONT_GRID_LABEL * scale);
+    let grid_label_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_GRID_LABEL);
 
     let mut grid_val = 0.0;
     while grid_val <= max_value + grid_step * 0.5 {
@@ -190,7 +193,7 @@ pub fn draw_line_chart(
                     Pos2::new(chart_left, gy),
                     Pos2::new(chart_left + chart_width, gy),
                 ],
-                Stroke::new(0.5 * scale, grid_color),
+                Stroke::new(VIZ_STROKE_GRID * scale, grid_color),
             );
         }
         let label = if grid_val == grid_val.floor() {
@@ -214,24 +217,24 @@ pub fn draw_line_chart(
     }
 
     // Draw axes
-    let axis_color = Theme::with_opacity(theme.foreground, opacity * 0.2);
+    let axis_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_AXIS);
     painter.line_segment(
         [
             Pos2::new(chart_left, chart_bottom),
             Pos2::new(chart_left + chart_width, chart_bottom),
         ],
-        Stroke::new(1.5 * scale, axis_color),
+        Stroke::new(VIZ_STROKE_AXIS * scale, axis_color),
     );
     painter.line_segment(
         [
             Pos2::new(chart_left, chart_top),
             Pos2::new(chart_left, chart_bottom),
         ],
-        Stroke::new(1.5 * scale, axis_color),
+        Stroke::new(VIZ_STROKE_AXIS * scale, axis_color),
     );
 
     // Draw x-axis labels
-    let x_label_font = FontId::proportional(theme.body_size * 0.5 * scale);
+    let x_label_font = FontId::proportional(theme.body_size * VIZ_FONT_GRID_LABEL * scale);
     let x_label_color = Theme::with_opacity(theme.foreground, opacity * 0.7);
     for (i, label) in x_labels.iter().enumerate().take(max_points) {
         let x = chart_left + (i as f32 / (max_points - 1).max(1) as f32) * chart_width;
@@ -245,7 +248,7 @@ pub fn draw_line_chart(
 
     // Draw series lines
     let mut needs_repaint = false;
-    let dot_radius = 4.0 * scale;
+    let dot_radius = VIZ_DOT_RADIUS * scale;
 
     for (si, s) in series.iter().enumerate() {
         let step = steps.get(si).copied().unwrap_or(0);
@@ -258,7 +261,7 @@ pub fn draw_line_chart(
             needs_repaint = true;
         }
 
-        let color = Theme::with_opacity(palette[si % palette.len()], opacity * 0.85);
+        let color = Theme::with_opacity(palette[si % palette.len()], opacity * VIZ_OPACITY_FILL);
         let n_points = s.values.len();
         if n_points == 0 {
             continue;
@@ -296,7 +299,10 @@ pub fn draw_line_chart(
                 p2
             };
 
-            painter.line_segment([p1, draw_p2], Stroke::new(2.5 * scale, color));
+            painter.line_segment(
+                [p1, draw_p2],
+                Stroke::new(VIZ_STROKE_DATA_LINE * scale, color),
+            );
         }
 
         // Draw dots at data points (only those within clip range)
@@ -309,7 +315,7 @@ pub fn draw_line_chart(
     }
 
     // Axis labels
-    let axis_label_font = FontId::proportional(theme.body_size * 0.65 * scale);
+    let axis_label_font = FontId::proportional(theme.body_size * VIZ_FONT_AXIS_LABEL * scale);
     let axis_label_color = Theme::with_opacity(theme.foreground, opacity * 0.7);
     if let Some(ref text) = data.x_label {
         draw_x_axis_label(
@@ -340,10 +346,10 @@ pub fn draw_line_chart(
 
     // Draw legend at top-right
     let legend_x = pos.x + max_width - legend_width;
-    let legend_font = FontId::proportional(theme.body_size * 0.6 * scale);
+    let legend_font = FontId::proportional(theme.body_size * VIZ_FONT_LEGEND * scale);
     let legend_item_height = 32.0 * scale;
     let legend_start_y = chart_top;
-    let swatch_width = 24.0 * scale;
+    let swatch_width = VIZ_SWATCH_SIZE * scale;
     let swatch_height = 3.0 * scale;
 
     for (si, s) in series.iter().enumerate() {
@@ -353,7 +359,7 @@ pub fn draw_line_chart(
         }
 
         let ly = legend_start_y + si as f32 * legend_item_height;
-        let color = Theme::with_opacity(palette[si % palette.len()], opacity * 0.85);
+        let color = Theme::with_opacity(palette[si % palette.len()], opacity * VIZ_OPACITY_FILL);
         let text_color = Theme::with_opacity(theme.foreground, opacity);
 
         // Color swatch (line style)
@@ -363,7 +369,7 @@ pub fn draw_line_chart(
                 Pos2::new(legend_x, swatch_y),
                 Pos2::new(legend_x + swatch_width, swatch_y),
             ],
-            Stroke::new(2.5 * scale, color),
+            Stroke::new(VIZ_STROKE_DATA_LINE * scale, color),
         );
         painter.circle_filled(
             Pos2::new(legend_x + swatch_width / 2.0, swatch_y),

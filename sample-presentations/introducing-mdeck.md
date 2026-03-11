@@ -176,7 +176,7 @@ Set a theme globally in frontmatter or per-slide:
 ---
 ```
 
-Built-in themes: **light**, **dark**, **solarized**, and more.
+Built-in themes: **light**, **dark**, and **nord**.
 
 Override per slide with `@theme:`, `@background:`, or `@transition:`.
 

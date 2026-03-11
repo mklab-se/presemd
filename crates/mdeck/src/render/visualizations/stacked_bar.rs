@@ -5,8 +5,12 @@ use eframe::egui::{self, FontId, Pos2, Stroke};
 use crate::theme::Theme;
 
 use super::{
-    VizReveal, assign_steps, draw_x_axis_label, draw_y_axis_label, parse_axis_label_directive,
-    parse_reveal_prefix, reveal_anim_progress,
+    VIZ_CORNER_BAR, VIZ_CORNER_SWATCH, VIZ_FONT_AXIS_LABEL, VIZ_FONT_CATEGORY_LABEL,
+    VIZ_FONT_GRID_LABEL, VIZ_FONT_LEGEND, VIZ_FONT_VALUE_LABEL, VIZ_LABEL_REVEAL_THRESHOLD,
+    VIZ_OPACITY_AXIS, VIZ_OPACITY_FILL, VIZ_OPACITY_GRID, VIZ_OPACITY_GRID_LABEL,
+    VIZ_OPACITY_LABEL, VIZ_STROKE_AXIS, VIZ_STROKE_GRID, VIZ_SWATCH_SIZE, VizReveal, assign_steps,
+    draw_x_axis_label, draw_y_axis_label, parse_axis_label_directive, parse_reveal_prefix,
+    reveal_anim_progress,
 };
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
@@ -172,19 +176,19 @@ pub fn draw_stacked_bar(
     let chart_bottom = chart_top + chart_height;
 
     // X-axis line
-    let axis_color = Theme::with_opacity(theme.foreground, opacity * 0.2);
+    let axis_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_AXIS);
     painter.line_segment(
         [
             Pos2::new(chart_left, chart_bottom),
             Pos2::new(chart_left + chart_width, chart_bottom),
         ],
-        Stroke::new(1.5 * scale, axis_color),
+        Stroke::new(VIZ_STROKE_AXIS * scale, axis_color),
     );
 
     // Y-axis grid lines
     let grid_step = nice_grid_step(max_stack, 5);
-    let grid_color = Theme::with_opacity(theme.foreground, opacity * 0.08);
-    let grid_font = FontId::proportional(theme.body_size * 0.55 * scale);
+    let grid_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_GRID);
+    let grid_font = FontId::proportional(theme.body_size * VIZ_FONT_GRID_LABEL * scale);
     let mut grid_val = grid_step;
     while grid_val <= max_stack {
         let frac = grid_val / max_stack;
@@ -194,14 +198,15 @@ pub fn draw_stacked_bar(
                 Pos2::new(chart_left, gy),
                 Pos2::new(chart_left + chart_width, gy),
             ],
-            Stroke::new(0.5 * scale, grid_color),
+            Stroke::new(VIZ_STROKE_GRID * scale, grid_color),
         );
         let label = if grid_val == grid_val.floor() {
             format!("{:.0}", grid_val)
         } else {
             format!("{:.1}", grid_val)
         };
-        let grid_label_color = Theme::with_opacity(theme.foreground, opacity * 0.4);
+        let grid_label_color =
+            Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_GRID_LABEL);
         let galley = painter.layout_no_wrap(label, grid_font.clone(), grid_label_color);
         painter.galley(
             Pos2::new(
@@ -218,13 +223,13 @@ pub fn draw_stacked_bar(
     let bar_gap = 12.0 * scale;
     let total_gaps = (num_categories + 1) as f32 * bar_gap;
     let bar_width = ((chart_width - total_gaps) / num_categories as f32).max(8.0 * scale);
-    let label_font = FontId::proportional(theme.body_size * 0.65 * scale);
-    let value_font = FontId::proportional(theme.body_size * 0.55 * scale);
+    let label_font = FontId::proportional(theme.body_size * VIZ_FONT_CATEGORY_LABEL * scale);
+    let value_font = FontId::proportional(theme.body_size * VIZ_FONT_VALUE_LABEL * scale);
 
     let mut needs_repaint = false;
 
     // Draw category labels below bars
-    let label_color = Theme::with_opacity(theme.foreground, opacity * 0.8);
+    let label_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_LABEL);
     for (ci, cat_name) in data.categories.iter().enumerate() {
         let bx = chart_left + bar_gap + ci as f32 * (bar_width + bar_gap);
         let galley = painter.layout(
@@ -266,16 +271,19 @@ pub fn draw_stacked_bar(
                 continue;
             }
 
-            let color = Theme::with_opacity(palette[si % palette.len()], opacity * 0.85);
+            let color =
+                Theme::with_opacity(palette[si % palette.len()], opacity * VIZ_OPACITY_FILL);
             let by = chart_bottom - cumulative_height - seg_height;
 
             let bar_rect =
                 egui::Rect::from_min_size(Pos2::new(bx, by), egui::vec2(bar_width, seg_height));
-            painter.rect_filled(bar_rect, 0.0, color);
+            painter.rect_filled(bar_rect, VIZ_CORNER_BAR * scale, color);
 
             // Value label inside segment if tall enough
-            if seg_height > 18.0 * scale && anim > 0.8 {
-                let val_opacity = ((anim - 0.8) / 0.2).min(1.0);
+            if seg_height > 18.0 * scale && anim > VIZ_LABEL_REVEAL_THRESHOLD {
+                let val_opacity = ((anim - VIZ_LABEL_REVEAL_THRESHOLD)
+                    / (1.0 - VIZ_LABEL_REVEAL_THRESHOLD))
+                    .min(1.0);
                 let val_text = if val == val.floor() {
                     format!("{:.0}", val)
                 } else {
@@ -295,7 +303,7 @@ pub fn draw_stacked_bar(
     }
 
     // Axis labels
-    let axis_label_font = FontId::proportional(theme.body_size * 0.65 * scale);
+    let axis_label_font = FontId::proportional(theme.body_size * VIZ_FONT_AXIS_LABEL * scale);
     let axis_label_color = Theme::with_opacity(theme.foreground, opacity * 0.7);
     if let Some(ref text) = data.x_label {
         draw_x_axis_label(
@@ -321,8 +329,8 @@ pub fn draw_stacked_bar(
     }
 
     // Legend at top
-    let legend_font = FontId::proportional(theme.body_size * 0.65 * scale);
-    let swatch_size = 18.0 * scale;
+    let legend_font = FontId::proportional(theme.body_size * VIZ_FONT_LEGEND * scale);
+    let swatch_size = VIZ_SWATCH_SIZE * scale;
     let item_spacing = 28.0 * scale;
 
     let legend_items: Vec<(String, egui::Color32)> = data
@@ -360,7 +368,7 @@ pub fn draw_stacked_bar(
                 Pos2::new(lx, legend_y + (legend_height - swatch_size) / 2.0),
                 egui::vec2(swatch_size, swatch_size),
             );
-            painter.rect_filled(swatch_rect, 2.0 * scale, color);
+            painter.rect_filled(swatch_rect, VIZ_CORNER_SWATCH * scale, color);
             lx += swatch_size + 6.0 * scale;
 
             let text_y = legend_y + (legend_height - galley.rect.height()) / 2.0;

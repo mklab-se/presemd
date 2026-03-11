@@ -2,7 +2,11 @@ use eframe::egui::{self, FontId, Pos2, Stroke};
 
 use crate::theme::Theme;
 
-use super::{VizReveal, assign_steps, parse_reveal_prefix};
+use super::{
+    VIZ_FONT_PRIMARY_LABEL, VIZ_FONT_SECONDARY_LABEL, VIZ_OPACITY_AXIS, VIZ_OPACITY_LABEL,
+    VIZ_STROKE_CONNECTOR, VIZ_STROKE_SEPARATOR, VIZ_TIMELINE_DOT, VizReveal, assign_steps,
+    parse_reveal_prefix,
+};
 
 // ─── Parsing ────────────────────────────────────────────────────────────────
 
@@ -77,7 +81,7 @@ pub fn draw_timeline(
     let painter = ui.painter();
 
     let n = entries.len();
-    let line_color = Theme::with_opacity(theme.foreground, opacity * 0.2);
+    let line_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_AXIS);
 
     // Horizontal layout: events spaced along a central line
     let line_y = pos.y + height * 0.5;
@@ -92,11 +96,14 @@ pub fn draw_timeline(
     // Draw the main timeline line
     let line_start = Pos2::new(pos.x + margin * 0.5, line_y);
     let line_end = Pos2::new(pos.x + max_width - margin * 0.5, line_y);
-    painter.line_segment([line_start, line_end], Stroke::new(2.0 * scale, line_color));
+    painter.line_segment(
+        [line_start, line_end],
+        Stroke::new(VIZ_STROKE_SEPARATOR * scale, line_color),
+    );
 
-    let date_font = FontId::proportional(theme.body_size * 0.85 * scale);
-    let desc_font = FontId::proportional(theme.body_size * 0.7 * scale);
-    let dot_radius = 8.0 * scale;
+    let date_font = FontId::proportional(theme.body_size * VIZ_FONT_PRIMARY_LABEL * scale);
+    let desc_font = FontId::proportional(theme.body_size * VIZ_FONT_SECONDARY_LABEL * scale);
+    let dot_radius = VIZ_TIMELINE_DOT * scale;
 
     for (i, entry) in entries.iter().enumerate() {
         let step = steps.get(i).copied().unwrap_or(0);
@@ -136,7 +143,10 @@ pub fn draw_timeline(
         };
         painter.line_segment(
             [connector_start, connector_end],
-            Stroke::new(1.5 * scale, Theme::with_opacity(color, opacity * 0.6)),
+            Stroke::new(
+                VIZ_STROKE_CONNECTOR * scale,
+                Theme::with_opacity(color, opacity * 0.6),
+            ),
         );
 
         // Date label
@@ -152,7 +162,7 @@ pub fn draw_timeline(
         let date_h = date_galley.rect.height();
 
         // Description label
-        let desc_color = Theme::with_opacity(theme.foreground, opacity * 0.8);
+        let desc_color = Theme::with_opacity(theme.foreground, opacity * VIZ_OPACITY_LABEL);
         let desc_galley = painter.layout(
             entry.description.clone(),
             desc_font.clone(),

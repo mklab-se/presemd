@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.2] - 2026-03-11
+
+### Added
+
+- **Nord theme** — an arctic, blue-gray theme inspired by the polar landscape. Calm, muted, and professional. Theme cycling is now dark → light → nord → dark (press `D`).
+- **Standardized visualization design tokens** — all 15 visualization types now share centralized constants for font sizes, stroke widths, corner radii, opacities, and swatch sizes, ensuring visual consistency within each theme.
+- **Theme-aware trend colors** — KPI cards now use theme-appropriate green/red instead of hardcoded values, ensuring readability across all three themes.
+
+### Changed
+
+- Synchronized font sizes, stroke widths, corner radii, and legend styling across bar charts, stacked bars, line charts, scatter plots, pie/donut charts, radar charts, Venn diagrams, funnel charts, KPI cards, org charts, gantt charts, progress bars, timelines, and word clouds.
+- Stacked bar charts now have rounded corners matching regular bar charts.
+- Radar chart axis labels reduced from 0.75 to 0.65 for consistency with other visualizations.
+- Timeline date/description fonts adjusted for better readability at distance.
+
 ## [0.12.1] - 2026-03-11
 
 ### Changed
