@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/mklab-se/mdeck/main/media/mdeck-horizontal.png" alt="mdeck" width="400">
-</p>
-
 # MDeck Gallery
 
 A visual showcase of what you can create with MDeck — layouts, charts, diagrams, and more. Everything below was generated from a single markdown file using `mdeck export`.
