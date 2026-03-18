@@ -110,7 +110,7 @@ pub enum AiCommands {
     Enable,
     /// Disable AI features for mdeck
     Disable,
-    /// Open AI configuration file in your editor
+    /// Interactively configure AI provider and model settings
     Config,
     /// Manage image styles
     Style {
@@ -152,13 +152,29 @@ pub struct GenerateImageArgs {
 pub enum StyleCommands {
     /// Add or update a named image style
     Add {
-        /// Style name
-        name: String,
-        /// Style description
-        description: String,
+        /// Style name (prompted interactively if omitted with -i)
+        name: Option<String>,
+        /// Style description (prompted interactively if omitted with -i)
+        description: Option<String>,
         /// Add as icon style instead of image style
         #[arg(long)]
         icon: bool,
+        /// Interactive mode — AI helps you craft the style
+        #[arg(short, long)]
+        interactive: bool,
+    },
+    /// Set (add or update) a named image style (alias for `add`)
+    Set {
+        /// Style name (prompted interactively if omitted with -i)
+        name: Option<String>,
+        /// Style description (prompted interactively if omitted with -i)
+        description: Option<String>,
+        /// Set as icon style instead of image style
+        #[arg(long)]
+        icon: bool,
+        /// Interactive mode — AI helps you craft the style
+        #[arg(short, long)]
+        interactive: bool,
     },
     /// Remove a named style
     Remove {

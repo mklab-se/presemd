@@ -269,7 +269,7 @@ fn parse_code_info(info: &str) -> (Option<String>, Vec<usize>, VizKind) {
     }
 
     // Check for visualization language tags
-    if info.starts_with("@diagram") {
+    if info.starts_with("@architecture") {
         return (None, vec![], VizKind::Diagram);
     }
     if info.starts_with("@wordcloud") {
@@ -729,7 +729,7 @@ mod tests {
 
     #[test]
     fn test_parse_diagram_block() {
-        let blocks = parse("```@diagram\n- A -> B: hello\n```");
+        let blocks = parse("```@architecture\n- A -> B: hello\n```");
         assert_eq!(blocks.len(), 1);
         assert!(matches!(&blocks[0], Block::Diagram { .. }));
     }

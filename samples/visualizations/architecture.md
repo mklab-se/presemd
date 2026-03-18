@@ -10,7 +10,7 @@ Focused tests for the diagram layout
 
 # Request Flow
 
-```@diagram
+```@architecture
 - Client -> Server: HTTP request
 - Server -> Database: Query
 - Database -> Server: Results
@@ -20,7 +20,7 @@ Focused tests for the diagram layout
 
 # Microservices Architecture
 
-```@diagram
+```@architecture
 # Components
 - Gateway  (icon: api,      pos: 1,1)
 - Auth     (icon: lock,     pos: 2,1)
@@ -38,7 +38,7 @@ Focused tests for the diagram layout
 
 # Simple Pipeline
 
-```@diagram
+```@architecture
 - Source -> Build: triggers
 - Build -> Test: on success
 - Test -> Deploy: all green
@@ -48,7 +48,7 @@ Focused tests for the diagram layout
 
 # Hub and Spoke
 
-```@diagram
+```@architecture
 # Central hub with many connections
 - API  (icon: api,      pos: 2,2)
 - Web  (icon: browser,  pos: 1,1)
@@ -69,7 +69,7 @@ Focused tests for the diagram layout
 
 # Mixed Arrow Types
 
-```@diagram
+```@architecture
 - Frontend -> Backend: REST calls
 - Backend -> Database: queries
 - Database <- Cache: fills
@@ -81,7 +81,7 @@ Focused tests for the diagram layout
 
 # Layered Architecture
 
-```@diagram
+```@architecture
 - Browser   (icon: browser,  pos: 1,1)
 - Mobile    (icon: mobile,   pos: 2,1)
 - Gateway   (icon: api,      pos: 1,2)
@@ -104,7 +104,7 @@ Focused tests for the diagram layout
 
 # Large System (10 nodes)
 
-```@diagram
+```@architecture
 - Client    (icon: browser,   pos: 1,1)
 - CDN       (icon: cloud,     pos: 2,1)
 - LB        (icon: network,   pos: 3,1)
@@ -132,14 +132,14 @@ Focused tests for the diagram layout
 
 # Minimal Diagram
 
-```@diagram
+```@architecture
 - A -> B: connects
 ```
 
 
 # Auto-Layout (no positions)
 
-```@diagram
+```@architecture
 - User -> Load Balancer: request
 - Load Balancer -> Server 1: route
 - Load Balancer -> Server 2: route
@@ -152,7 +152,7 @@ Focused tests for the diagram layout
 
 # Reveal: Incremental Build
 
-```@diagram
+```@architecture
 # Base infrastructure always visible
 - Server (icon: server, pos: 1,1)
 - DB     (icon: database, pos: 2,1)
@@ -172,7 +172,7 @@ Focused tests for the diagram layout
 
 # Reveal: Pipeline Growth
 
-```@diagram
+```@architecture
 - Source (icon: storage, pos: 1,1)
 + Build  (icon: container, pos: 2,1)
 + Source -> Build: triggers
@@ -185,7 +185,7 @@ Focused tests for the diagram layout
 
 # Dense Routing Test
 
-```@diagram
+```@architecture
 # 3x3 grid with many crossing connections
 - A (pos: 1,1)
 - B (pos: 2,1)

@@ -375,7 +375,7 @@ fn scan_markers(
         }
 
         // Track diagram blocks
-        if trimmed.starts_with("```") && trimmed.contains("@diagram") {
+        if trimmed.starts_with("```") && trimmed.contains("@architecture") {
             in_diagram = true;
             current_slide = find_slide_for_line(line_idx, lines, presentation);
             continue;

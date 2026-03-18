@@ -380,7 +380,7 @@ mod tests {
 
     #[test]
     fn test_poker_night_slide_count() {
-        let content = include_str!("../../../../sample-presentations/poker-night.md");
+        let content = include_str!("../../../../samples/poker-night.md");
         // Strip frontmatter
         let (meta, body) = super::super::frontmatter::extract(content);
         let slides = split(&body, meta.slide_level);

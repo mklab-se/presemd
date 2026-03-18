@@ -78,7 +78,7 @@ Human hands and mechanical hands shuffle the same deck.
 
 # How Poker AI Works
 
-```@diagram
+```@architecture
 - Training Data  (icon: database,  pos: 1,1)
 - Self-Play      (icon: function,  pos: 2,1)
 - Strategy Net   (icon: network,   pos: 3,1)

@@ -53,7 +53,7 @@ generate("slides.md", style="cinematic")
 
 ## Architecture Diagram with Generated Icons
 
-```@diagram
+```@architecture
 - Gateway: API Gateway (icon: generate-image, prompt: "An API gateway router icon", pos: 1, 2)
 - Auth: Authentication (icon: generate-image, prompt: "A security lock shield icon", pos: 2, 1)
 - App: Application (icon: generate-image, prompt: "A running application gear icon", pos: 2, 3)

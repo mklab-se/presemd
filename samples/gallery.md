@@ -70,7 +70,7 @@ fn main() {
 
 ## Architecture Diagram
 
-```@diagram
+```@architecture
 - Browser   (icon: browser,  pos: 1,1)
 - Mobile    (icon: mobile,   pos: 2,1)
 - Gateway   (icon: api,      pos: 1,2)
@@ -94,7 +94,7 @@ fn main() {
 
 ## Flow Diagram
 
-```@diagram
+```@architecture
 - Source -> Build: triggers
 - Build -> Test: on success
 - Test -> Deploy: all green

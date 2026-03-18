@@ -152,7 +152,7 @@ After parsing a slide's content into block elements, MDeck classifies them and m
 | `IMG`     | Image                                |
 | `CODE`    | Fenced code block                    |
 | `QUOTE`   | Blockquote                           |
-| `DIAGRAM` | Diagram block (`@diagram`)           |
+| `DIAGRAM` | Architecture diagram block (`@architecture`) |
 
 ### Layout patterns
 
@@ -494,7 +494,7 @@ Block directives at the start of a slide apply to that slide. In the frontmatter
 For complex content, the fenced code block syntax with `@` on the language tag:
 
 ````markdown
-```@diagram
+```@architecture
 ...diagram content...
 ```
 ````
@@ -522,10 +522,10 @@ For complex content, the fenced code block syntax with `@` on the language tag:
 
 ### 8.1 Basic form
 
-Diagrams use a fenced code block with the `@diagram` language tag. In the simplest form, just write relationships — components are inferred:
+Diagrams use a fenced code block with the `@architecture` language tag. In the simplest form, just write relationships — components are inferred:
 
 ````markdown
-```@diagram
+```@architecture
 - User -> Server: Sends request
 - Server -> Database: Queries data
 - Server -> User: Returns response
@@ -537,7 +537,7 @@ Diagrams use a fenced code block with the `@diagram` language tag. In the simple
 For explicit layout, icons, and stepped reveal:
 
 ````markdown
-```@diagram
+```@architecture
 # Components
 - User        (icon: user,      pos: 1,1)
 - Server      (icon: server,    pos: 2,1)
@@ -615,10 +615,10 @@ The `pos: x,y` values are relative grid coordinates:
 
 ### 8.7 Diagram type qualifier
 
-For future extensibility, a type can be specified after `@diagram`:
+For future extensibility, a type can be specified after `@architecture`:
 
 ````markdown
-```@diagram sequence
+```@architecture sequence
 - Alice -> Bob: Hello
 - Bob -> Alice: Hi there
 ```
@@ -804,7 +804,7 @@ A monolith struggling under load.
 
 # The New Architecture
 
-```@diagram
+```@architecture
 # Components
 - User      (icon: user,      pos: 1,1)
 - Gateway   (icon: api,       pos: 2,1)
@@ -924,7 +924,7 @@ Image        = /^!\[([^\]]*)\]\(([^)]+)\)$/
 
 CodeBlock    = /^`{3,}(\w+)?(\s*\{[^}]+\})?\n/ CONTENT /\n`{3,}$/
 
-DiagramBlock = /^`{3,}@diagram(\s+\w+)?\n/ CONTENT /\n`{3,}$/
+DiagramBlock = /^`{3,}@architecture(\s+\w+)?\n/ CONTENT /\n`{3,}$/
 
 BlockQuote   = /^>\s+.+$/  (one or more consecutive lines)
 

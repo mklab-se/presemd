@@ -147,7 +147,7 @@ A good presenter commands the room — not the screen.
 
 # Pacing
 
-```@diagram
+```@architecture
 - Opening    (icon: user,     pos: 1,1)
 - Build-up   (icon: function, pos: 2,1)
 - Climax     (icon: monitor,  pos: 3,1)

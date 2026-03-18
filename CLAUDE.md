@@ -130,11 +130,11 @@ mdeck --help                 # Show help
 
 Before every release, verify these are up to date:
 
-- **`GALLERY.md`** — Re-export gallery slides (`mdeck export sample-presentations/gallery.md --output-dir media/gallery`) and verify all screenshots reflect current rendering. If new visualization types, layouts, or features have been added, add them to `sample-presentations/gallery.md` and regenerate.
+- **`GALLERY.md`** — Re-export gallery slides (`mdeck export samples/gallery.md --output-dir media/gallery`) and verify all screenshots reflect current rendering. If new visualization types, layouts, or features have been added, add them to `samples/gallery.md` and regenerate.
 - **`README.md`** — Ensure features list, command reference, visualization table, and AI section are current. Check that gallery preview images look correct. The README is the first thing users see — it must provide an excellent experience.
 - **`CHANGELOG.md`** — Dated entry with all user-visible changes.
 - **`crates/mdeck/doc/mdeck-spec.md`** — Format spec reflects all current features.
-- **`sample-presentations/`** — Test presentations cover all features; dedicated test files exist for each visualization type.
+- **`samples/`** — Test presentations cover all features; dedicated test files exist for each visualization type.
 - **AI capabilities** — README documents AI image generation, style management, and diagram icon generation with clear examples.
 
 ## Code Style
@@ -157,38 +157,43 @@ Before every release, verify these are up to date:
 ### Visual Testing
 - **Always verify rendering changes visually before declaring work complete.** Use the export command to generate slide PNGs and inspect them:
   ```bash
-  cargo run -p mdeck -- export sample-presentations/test-code.md --output-dir /tmp/slides
+  cargo run -p mdeck -- export samples/layouts/code.md --output-dir /tmp/slides
   ```
   Then read the exported PNGs to check layout, syntax highlighting, spacing, and overall visual quality.
-- Test presentations in `sample-presentations/` cover specific layouts: `test-bullet.md`, `test-code.md`, `poker-night.md`, etc.
-- **Per-visualization test files** exist for efficient testing of individual visualization types:
-  - `test-viz-barchart.md` — bar charts (vertical, horizontal, axis labels, reveal)
-  - `test-viz-donutchart.md` — donut charts (center text, no center, reveal)
-  - `test-viz-funnel.md` — funnel charts (basic, detailed, reveal)
-  - `test-viz-kpi.md` — KPI cards (basic, many metrics, reveal)
-  - `test-viz-linechart.md` — line charts (single/multi series, axis labels)
-  - `test-viz-orgchart.md` — org charts (basic, deep hierarchy, reveal)
-  - `test-viz-gantt.md` — gantt charts (basic, dependencies, delays, long timeline, many tasks, reveal)
-  - `test-viz-piechart.md` — pie charts (basic, many slices, reveal)
-  - `test-viz-progress.md` — progress bars (basic, many bars, reveal)
-  - `test-viz-radar.md` — radar charts (single/multi series, reveal)
-  - `test-viz-scatter.md` — scatter plots (basic, sized, axis labels, reveal)
-  - `test-viz-stacked-bar.md` — stacked bar charts (basic, axis labels, reveal)
-  - `test-viz-timeline.md` — timelines (basic, long, reveal)
-  - `test-viz-venn.md` — Venn diagrams (2-set, 3-set, reveal)
-  - `test-viz-wordcloud.md` — word clouds (large, small, progressive reveal)
-  - `test-image-layouts.md` — image split layouts (bullet+image, code+image, quote+image, content+image)
-  - `test-diagram.md` — diagrams (auto-layout, grid, arrow types, reveal)
-  - `test-image-generation.md` — AI image generation markers (image-generation, diagram icon prompts, @image-style)
-  - `test-all-visualizations.md` — comprehensive test with every visualization type
-  - `gallery.md` — gallery presentation used to generate `GALLERY.md` screenshots (source for `media/gallery/` PNGs)
+- Test presentations in `samples/` are organized into subdirectories:
+  - **`samples/visualizations/`** — per-visualization test files:
+    - `barchart.md` — bar charts (vertical, horizontal, axis labels, reveal)
+    - `donutchart.md` — donut charts (center text, no center, reveal)
+    - `funnel.md` — funnel charts (basic, detailed, reveal)
+    - `kpi.md` — KPI cards (basic, many metrics, reveal)
+    - `linechart.md` — line charts (single/multi series, axis labels)
+    - `orgchart.md` — org charts (basic, deep hierarchy, reveal)
+    - `gantt.md` — gantt charts (basic, dependencies, delays, long timeline, many tasks, reveal)
+    - `piechart.md` — pie charts (basic, many slices, reveal)
+    - `progress.md` — progress bars (basic, many bars, reveal)
+    - `radar.md` — radar charts (single/multi series, reveal)
+    - `scatter.md` — scatter plots (basic, sized, axis labels, reveal)
+    - `stacked-bar.md` — stacked bar charts (basic, axis labels, reveal)
+    - `timeline.md` — timelines (basic, long, reveal)
+    - `venn.md` — Venn diagrams (2-set, 3-set, reveal)
+    - `wordcloud.md` — word clouds (large, small, progressive reveal)
+    - `architecture.md` — architecture diagrams (auto-layout, grid, arrow types, reveal)
+    - `all.md` — comprehensive test with every visualization type
+  - **`samples/layouts/`** — per-layout test files:
+    - `bullet.md`, `code.md`, `content.md`, `quote.md`, `section.md`, `title.md`, `two-column.md`
+    - `image.md`, `image-layouts.md` — image split layouts (bullet+image, code+image, quote+image, content+image)
+    - `image-generation.md` — AI image generation markers (image-generation, diagram icon prompts, @image-style)
+    - `gallery.md` — gallery layout (2/3/4 images)
+    - `layouts.md` — mixed layout test
+  - **`samples/transitions/`** — per-transition test files: `fade.md`, `slide.md`, `spatial.md`, `none.md`
+  - **Top-level `samples/`** — showcase presentations: `gallery.md`, `introducing-mdeck.md`, `poker-night.md`, `saloon-workshop.md`, `continents.md`
   When working on a specific visualization type, use its dedicated test file for faster iteration.
 - When fixing visual issues, export before and after to confirm the fix.
 
 ### Runtime Testing
 - **After making changes, run the application and check for runtime incidents.** Launch a relevant test presentation, navigate through slides, then check for errors:
   ```bash
-  cargo run -p mdeck -- sample-presentations/test-all-visualizations.md
+  cargo run -p mdeck -- samples/visualizations/all.md
   ```
   After quitting, if the application reports incidents, read the log file and fix any issues. Incident logs are at `~/Library/Application Support/mdeck/logs/` (macOS) or `~/.config/mdeck/logs/` (Linux).
 - Common issues to watch for: `time_jump` false positives (threshold must exceed the repaint heartbeat interval), rendering panics, and layout overflow.
@@ -203,8 +208,8 @@ Before every release, verify these are up to date:
   - `crates/mdeck/doc/mdeck-spec.md` — format specification (embedded in binary via `mdeck spec`)
 - **The format spec (`mdeck-spec.md`) must be updated whenever features are added or changed.** This includes new visualization types, directives, keyboard shortcuts, layouts, or any other user-facing feature. The spec is used by both humans and AI agents to understand how to write presentations.
 - **Sample presentations must reflect all features.** When adding a new visualization type, layout, or feature:
-  - Add it to `test-all-visualizations.md` (comprehensive showcase)
-  - Create a dedicated `test-viz-<type>.md` or `test-<feature>.md` file
+  - Add it to `samples/visualizations/all.md` (comprehensive showcase)
+  - Create a dedicated file in `samples/visualizations/` or `samples/layouts/`
   - Update `introducing-mdeck.md` if the feature is significant enough for the intro presentation
 - When adding new commands, flags, or crates, update all relevant docs in the same commit
 - `CHANGELOG.md` must be updated for every release with a dated entry following Keep a Changelog format

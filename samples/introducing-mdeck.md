@@ -136,7 +136,7 @@ MDeck renders charts directly from your markdown. Here's project status at a gla
 
 # Architecture
 
-```@diagram
+```@architecture
 - Markdown File  (icon: storage,   pos: 1,1)
 - Parser         (icon: function,  pos: 2,1)
 - Layout Engine  (icon: container, pos: 3,1)

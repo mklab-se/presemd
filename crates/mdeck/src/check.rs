@@ -10,7 +10,7 @@ pub enum CheckCategory {
 impl fmt::Display for CheckCategory {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CheckCategory::DiagramRouting => write!(f, "diagram"),
+            CheckCategory::DiagramRouting => write!(f, "architecture"),
         }
     }
 }

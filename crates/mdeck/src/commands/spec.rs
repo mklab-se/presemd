@@ -33,7 +33,7 @@ LAYOUTS (auto-inferred, override with @layout: name)
   code         Code block + optional heading
   image        Single image + optional heading/caption
   gallery      2+ images
-  diagram      @diagram fenced block
+  diagram      @architecture fenced block
   two-column   @layout: two-column with +++ separator
   content      Fallback
 

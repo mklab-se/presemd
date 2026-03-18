@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.3] - 2026-03-19
+
+### Added
+
+- **Interactive AI config wizard** (`mdeck ai config`) — guided setup for AI providers and models, replacing the previous "open in editor" approach. Powered by ailloy's `config-tui` module.
+- **Interactive style creation** (`mdeck ai style add -i`) — AI-assisted style crafting with interactive prompts. `set` is now an alias for `add`.
+- **Color-coded edge labels** — architecture diagram edge labels now use the edge's color as background, making it easy to see which label belongs to which connection.
+
+### Changed
+
+- Upgraded ailloy dependency from 0.4 to 0.5 with `config-tui` feature for shared AI status/enable/disable logic.
+- AI status, enable, and disable commands now delegate to ailloy's `config_tui` module for consistent behavior across ailloy-based tools.
+- Reorganized sample presentations from `sample-presentations/` to `samples/` with subdirectories (`visualizations/`, `layouts/`, `transitions/`).
+- Edge label horizontal padding increased for better readability.
+
 ## [0.12.2] - 2026-03-11
 
 ### Added
@@ -250,7 +265,7 @@ All notable changes to this project will be documented in this file.
 - Mouse input: left-click forward, right-click backward, scroll wheel for content
 - PNG export via `mdeck export` with configurable resolution
 - Format specification via `mdeck spec` (full and `--short` quick reference)
-- Sample presentations for testing (`sample-presentations/`)
+- Sample presentations for testing (`samples/`)
 
 ## [0.1.1] - 2026-02-28
 

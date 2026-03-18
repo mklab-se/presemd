@@ -2,9 +2,9 @@
 
 A visual showcase of what you can create with MDeck — layouts, charts, diagrams, and more. Everything below was generated from a single markdown file using `mdeck export`.
 
-> **Source:** [`sample-presentations/gallery.md`](sample-presentations/gallery.md)
+> **Source:** [`samples/gallery.md`](samples/gallery.md)
 >
-> **Try it yourself:** `mdeck sample-presentations/gallery.md`
+> **Try it yourself:** `mdeck samples/gallery.md`
 
 ---
 
@@ -198,7 +198,7 @@ The images below were generated using `mdeck ai generate` with the style: *"Cine
 
 <img src="media/gallery/antarctica.png" width="720">
 
-*Antarctic ice shelf with aurora — another AI-generated image used in the [continents presentation](sample-presentations/continents.md).*
+*Antarctic ice shelf with aurora — another AI-generated image used in the [continents presentation](samples/continents.md).*
 
 ---
 

@@ -5,7 +5,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.12.2"
+version = "0.12.3"
 edition = "2024"
 authors = ["Kristofer Liljeblad <kristofer@mklab.se>"]
 license = "MIT"
@@ -58,6 +58,6 @@ rayon = "1.10"
 notify-debouncer-mini = "0.7"
 
 # AI integration
-ailloy = { version = "0.4", default-features = false }
+ailloy = { version = "0.5", default-features = false, features = ["config-tui"] }
 futures = "0.3"
 tokio = { version = "1", features = ["rt", "macros"] }

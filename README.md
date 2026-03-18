@@ -112,7 +112,7 @@ This is my first MDeck presentation.
 
 ## Architecture
 
-​```@diagram
+​```@architecture
 - Client -> Server: requests
 - Server -> Database: queries
 - Database -> Server: results
@@ -139,7 +139,7 @@ MDeck detects what kind of slide you're writing and picks the best layout:
 | Single image | Full-screen image |
 | Bullets + image | Split layout |
 | `+++` separator | Two-column |
-| `@diagram` code block | Diagram |
+| `@architecture` code block | Architecture diagram |
 | `@barchart`, `@piechart`, etc. | Visualization |
 
 Override with `@layout: name` when needed.
@@ -165,16 +165,16 @@ Write data visualizations directly in markdown using fenced code blocks:
 | Venn diagram | `@venn` | `- Set A & Set B: Overlap` |
 | Org chart | `@orgchart` | `- CEO -> CTO` |
 | Gantt chart | `@gantt` | `- Design: 8d, after Research` |
-| Diagram | `@diagram` | `- Client -> Server` |
+| Architecture | `@architecture` | `- Client -> Server` |
 
 All visualizations support progressive reveal with `+` markers.
 
-### Diagrams
+### Architecture Diagrams
 
 Architecture and flow diagrams from text:
 
 ```markdown
-​```@diagram
+​```@architecture
 - Browser   (icon: browser,  pos: 1,1)
 - API       (icon: api,      pos: 2,1)
 - Database  (icon: database, pos: 2,2)
@@ -268,12 +268,12 @@ mdeck ai generate-image --prompt "A futuristic cityscape at sunset"
 mdeck ai generate-image --prompt "A database server" --icon --output db.png
 ```
 
-### Diagram Icons
+### Architecture Diagram Icons
 
-Generate custom icons for diagram nodes:
+Generate custom icons for architecture diagram nodes:
 
 ```markdown
-​```@diagram
+​```@architecture
 - Gateway (icon: generate-image, prompt: "An API gateway router")
 - Auth    (icon: generate-image, prompt: "A security lock shield")
 ​```

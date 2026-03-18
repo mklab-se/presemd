@@ -4,13 +4,18 @@
 //! `mdeck ai test`           — test AI connection (chat and/or image generation)
 //! `mdeck ai enable`         — enable AI for mdeck
 //! `mdeck ai disable`        — disable AI for mdeck
-//! `mdeck ai config`         — open config in editor
+//! `mdeck ai config`         — interactive config wizard
 //! `mdeck ai style ...`      — manage image styles
 //! `mdeck ai generate-image` — generate a single image from a prompt
 //! `mdeck ai generate`       — generate all AI images for a presentation
 
+use std::io::{self, Write};
+
 use anyhow::Result;
 use colored::Colorize;
+use futures::StreamExt;
+
+use ailloy::config_tui;
 
 use crate::cli::{AiCommands, StyleCommands};
 use crate::config::{Config, DefaultsConfig};
@@ -20,12 +25,16 @@ const APP_NAME: &str = "mdeck";
 
 pub async fn run(cmd: Option<AiCommands>, quiet: bool) -> Result<()> {
     match cmd {
-        None => status(),
+        None => config_tui::print_ai_status(APP_NAME, &["chat", "image"]),
         Some(AiCommands::Test { message }) => test(message).await,
-        Some(AiCommands::Enable) => enable(),
-        Some(AiCommands::Disable) => disable(),
-        Some(AiCommands::Config) => open_config(),
-        Some(AiCommands::Style { command }) => run_style(command),
+        Some(AiCommands::Enable) => config_tui::enable_ai(APP_NAME),
+        Some(AiCommands::Disable) => config_tui::disable_ai(APP_NAME),
+        Some(AiCommands::Config) => {
+            let mut config = ailloy::config::Config::load_global()?;
+            config_tui::run_interactive_config(&mut config, &["chat", "image"]).await?;
+            Ok(())
+        }
+        Some(AiCommands::Style { command }) => run_style(command).await,
         Some(AiCommands::GenerateImage(args)) => generate_image_cmd(args).await,
         Some(AiCommands::Generate { file, force, style }) => {
             crate::commands::generate::run(file, force, style, quiet).await
@@ -36,72 +45,18 @@ pub async fn run(cmd: Option<AiCommands>, quiet: bool) -> Result<()> {
 /// Check if AI features are active (configured via ailloy + enabled for this tool).
 #[allow(dead_code)]
 pub fn is_ai_active() -> bool {
-    !is_disabled()
-        && ailloy::config::Config::load()
-            .ok()
-            .and_then(|c| c.default_chat_node().ok().map(|_| ()))
-            .is_some()
+    config_tui::is_ai_active(APP_NAME)
 }
 
 /// Check if ailloy has a default node for a capability.
 pub fn has_capability(cap: &str) -> bool {
+    if config_tui::is_ai_disabled(APP_NAME) {
+        return false;
+    }
     ailloy::config::Config::load()
         .ok()
         .and_then(|c| c.default_node_for(cap).ok().map(|_| true))
         .unwrap_or(false)
-}
-
-fn status() -> Result<()> {
-    let enabled = !is_disabled();
-
-    // --- Chat completion ---
-    println!("{}", "Chat Completion".bold().underline());
-    if has_capability("chat") {
-        let config = ailloy::config::Config::load()?;
-        let (id, node) = config.default_node_for("chat")?;
-        if enabled {
-            println!("  {} configured and enabled\n", "✓".green().bold());
-        } else {
-            println!("  {} configured but disabled\n", "!".yellow().bold());
-        }
-        print_node_info(id, node);
-    } else {
-        println!("  {} not configured\n", "✗".red().bold());
-        println!(
-            "  Run {} to set up a chat provider.",
-            format!("{APP_NAME} ai config").cyan()
-        );
-    }
-
-    // --- Image generation ---
-    println!("\n{}", "Image Generation".bold().underline());
-    if has_capability("image") {
-        let config = ailloy::config::Config::load()?;
-        let (id, node) = config.default_node_for("image")?;
-        if enabled {
-            println!("  {} configured and enabled\n", "✓".green().bold());
-        } else {
-            println!("  {} configured but disabled\n", "!".yellow().bold());
-        }
-        print_node_info(id, node);
-    } else {
-        println!("  {} not configured\n", "✗".red().bold());
-        println!(
-            "  Run {} to set up an image provider.",
-            format!("{APP_NAME} ai config").cyan()
-        );
-    }
-
-    // --- Overall status ---
-    if !enabled {
-        println!(
-            "\n  AI features are {}. Run {} to re-enable.",
-            "disabled".yellow(),
-            format!("{APP_NAME} ai enable").cyan()
-        );
-    }
-
-    Ok(())
 }
 
 async fn test(message: Option<String>) -> Result<()> {
@@ -252,19 +207,35 @@ async fn test(message: Option<String>) -> Result<()> {
 
 // ── Style management ─────────────────────────────────────────────────────────
 
-fn run_style(cmd: StyleCommands) -> Result<()> {
+async fn run_style(cmd: StyleCommands) -> Result<()> {
     match cmd {
         StyleCommands::Add {
             name,
             description,
             icon,
+            interactive,
+        }
+        | StyleCommands::Set {
+            name,
+            description,
+            icon,
+            interactive,
         } => {
+            if interactive {
+                return run_interactive_style(name, icon).await;
+            }
+            let name = name.ok_or_else(|| {
+                anyhow::anyhow!("Style name is required. Use -i for interactive mode.")
+            })?;
+            let description = description.ok_or_else(|| {
+                anyhow::anyhow!("Style description is required. Use -i for interactive mode.")
+            })?;
             let mut config = Config::load_or_default();
             if icon {
                 config.add_icon_style(&name, &description);
                 config.save()?;
                 println!(
-                    "{} Icon style {} added.",
+                    "{} Icon style {} saved.",
                     "✓".green().bold(),
                     name.cyan().bold()
                 );
@@ -272,7 +243,7 @@ fn run_style(cmd: StyleCommands) -> Result<()> {
                 config.add_style(&name, &description);
                 config.save()?;
                 println!(
-                    "{} Image style {} added.",
+                    "{} Image style {} saved.",
                     "✓".green().bold(),
                     name.cyan().bold()
                 );
@@ -445,6 +416,236 @@ fn run_style(cmd: StyleCommands) -> Result<()> {
             Ok(())
         }
     }
+}
+
+// ── Interactive style creation ───────────────────────────────────────────────
+
+const STYLE_SYSTEM_PROMPT: &str = "\
+You are a style design assistant for mdeck, a markdown-based presentation tool. \
+Your job is to help the user craft a concise image generation style description \
+that will be used as a prefix for all AI-generated images in their presentations.
+
+A style description should be 1-3 sentences that define the visual aesthetic: \
+color palette, mood, artistic technique, level of detail, and composition preferences. \
+It must NOT describe specific subjects — only the visual style.
+
+Here are examples of good style descriptions:
+- \"Modern, clean, and visually striking. Professional color palette with subtle gradients. \
+Polished and contemporary, suitable for business or technical presentations.\"
+- \"Warm watercolor illustrations with soft edges and muted earth tones. \
+Hand-drawn feel with visible brushstrokes and gentle lighting.\"
+- \"Retro 80s synthwave aesthetic with neon pinks, purples, and electric blues. \
+Grid-based perspective with glowing edges and chrome reflections.\"
+
+Ask focused questions (one or two at a time) about their preferred aesthetic. \
+When you and the user agree on a style, output it wrapped exactly like this:
+
+[STYLE: <the complete style description>]
+
+If the user wants changes, refine and propose again. Keep the conversation friendly and concise.";
+
+/// Extract a style description from the `[STYLE: <description>]` marker.
+fn extract_style_description(text: &str) -> Option<String> {
+    let marker = "[STYLE:";
+    let start = text.find(marker)?;
+    let after = &text[start + marker.len()..];
+    let end = after.find(']')?;
+    let desc = after[..end].trim();
+    if desc.is_empty() {
+        None
+    } else {
+        Some(desc.to_string())
+    }
+}
+
+/// Stream a chat response from the AI, printing tokens in real-time.
+/// Returns the full assembled response text.
+async fn stream_chat_response(
+    client: &ailloy::Client,
+    history: &[ailloy::Message],
+) -> Result<String> {
+    let mut stream = client.chat_stream(history).await?;
+    let mut assembled = String::new();
+
+    while let Some(event) = stream.next().await {
+        match event? {
+            ailloy::StreamEvent::Delta(text) => {
+                assembled.push_str(&text);
+                print!("{text}");
+                io::stdout().flush()?;
+            }
+            ailloy::StreamEvent::Done(_) => {
+                println!();
+            }
+        }
+    }
+
+    Ok(assembled)
+}
+
+/// Read a line of user input with a `> ` prompt.
+fn read_user_input() -> Result<Option<String>> {
+    eprint!("{} ", ">".bold());
+    io::stderr().flush()?;
+
+    let mut input = String::new();
+    match io::stdin().read_line(&mut input) {
+        Ok(0) => Ok(None), // EOF
+        Ok(_) => {
+            let trimmed = input.trim().to_string();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(trimmed))
+            }
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+async fn run_interactive_style(name: Option<String>, icon: bool) -> Result<()> {
+    if !has_capability("chat") {
+        anyhow::bail!(
+            "Chat AI not configured. Run `{APP_NAME} ai config` to set up a chat provider."
+        );
+    }
+
+    let kind = if icon { "icon" } else { "image" };
+
+    eprintln!("{} Interactive {} style creator", "mdeck".bold(), kind);
+    eprintln!(
+        "Type {} to exit, {} for help.",
+        "/quit".bold(),
+        "/help".bold()
+    );
+
+    let client = ailloy::Client::for_capability("chat")?;
+
+    let mut history: Vec<ailloy::Message> = vec![ailloy::Message::system(STYLE_SYSTEM_PROMPT)];
+
+    // Build the initial greeting message based on what we know
+    let greeting = if let Some(ref n) = name {
+        format!(
+            "Greet me briefly and tell me you'll help me create {} style called \"{}\". \
+             Ask what kind of visual aesthetic I'm going for.",
+            if icon { "an icon" } else { "an image" },
+            n
+        )
+    } else {
+        format!(
+            "Greet me briefly and tell me you'll help me create {} style for my presentations. \
+             Ask what kind of visual aesthetic I'm going for.",
+            if icon { "an icon" } else { "an image" },
+        )
+    };
+    history.push(ailloy::Message::user(&greeting));
+
+    eprintln!();
+    let response = stream_chat_response(&client, &history).await?;
+    history.push(ailloy::Message::assistant(&response));
+    println!();
+
+    // REPL loop
+    loop {
+        let input = match read_user_input()? {
+            Some(s) => s,
+            None => continue,
+        };
+
+        match input.as_str() {
+            "/quit" | "/exit" | "/q" => break,
+            "/clear" => {
+                history = vec![ailloy::Message::system(STYLE_SYSTEM_PROMPT)];
+                eprintln!("{}", "History cleared.".dimmed());
+                continue;
+            }
+            "/help" => {
+                eprintln!("{}", "Commands:".bold());
+                eprintln!("  {} — Exit the session", "/quit".bold());
+                eprintln!("  {} — Clear conversation history", "/clear".bold());
+                eprintln!("  {} — Show this help", "/help".bold());
+                continue;
+            }
+            s if s.starts_with('/') => {
+                eprintln!(
+                    "{} Unknown command: {}. Type {} for help.",
+                    "!".yellow().bold(),
+                    input,
+                    "/help".bold()
+                );
+                continue;
+            }
+            _ => {}
+        }
+
+        history.push(ailloy::Message::user(&input));
+
+        let response = stream_chat_response(&client, &history).await?;
+        history.push(ailloy::Message::assistant(&response));
+
+        // Check for [STYLE: ...] marker
+        if let Some(description) = extract_style_description(&response) {
+            println!();
+
+            // Resolve the style name
+            let style_name = if let Some(ref n) = name {
+                n.clone()
+            } else {
+                // Ask the user for a name
+                eprint!("{} Name for this style: ", "?".green().bold());
+                io::stderr().flush()?;
+                let mut name_input = String::new();
+                io::stdin().read_line(&mut name_input)?;
+                let name_input = name_input.trim().to_string();
+                if name_input.is_empty() {
+                    eprintln!("{} No name provided, style not saved.", "!".yellow().bold());
+                    continue;
+                }
+                name_input
+            };
+
+            // Confirm before saving
+            eprint!(
+                "{} Save {} style {}? [Y/n] ",
+                "?".green().bold(),
+                kind,
+                style_name.cyan().bold()
+            );
+            io::stderr().flush()?;
+            let mut confirm = String::new();
+            io::stdin().read_line(&mut confirm)?;
+            let confirm = confirm.trim().to_lowercase();
+
+            if confirm.is_empty() || confirm == "y" || confirm == "yes" {
+                let mut config = Config::load_or_default();
+                if icon {
+                    config.add_icon_style(&style_name, &description);
+                } else {
+                    config.add_style(&style_name, &description);
+                }
+                config.save()?;
+                println!(
+                    "{} {} style {} saved.",
+                    "✓".green().bold(),
+                    if icon { "Icon" } else { "Image" },
+                    style_name.cyan().bold()
+                );
+                println!("  {}", description.dimmed());
+                break;
+            } else {
+                // Tell the model the user wants to refine
+                history.push(ailloy::Message::user(
+                    "I'm not happy with that style yet. Ask me what I'd like to change.",
+                ));
+                let followup = stream_chat_response(&client, &history).await?;
+                history.push(ailloy::Message::assistant(&followup));
+            }
+        }
+
+        println!();
+    }
+
+    Ok(())
 }
 
 // ── Ad-hoc image generation ──────────────────────────────────────────────────
@@ -626,100 +827,38 @@ fn offer_cleanup(path: &std::path::Path) {
     }
 }
 
-fn enable() -> Result<()> {
-    let marker = disabled_marker_path();
-    if marker.exists() {
-        std::fs::remove_file(&marker)?;
-    }
-    println!("{} AI features enabled for {APP_NAME}.", "✓".green().bold());
-    Ok(())
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-fn disable() -> Result<()> {
-    let marker = disabled_marker_path();
-    if let Some(parent) = marker.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(&marker, "")?;
-    println!(
-        "{} AI features disabled for {APP_NAME}.",
-        "!".yellow().bold()
-    );
-    Ok(())
-}
-
-fn open_config() -> Result<()> {
-    let path = ailloy::config::Config::config_path()?;
-
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+    #[test]
+    fn test_extract_style_description() {
+        let text =
+            "Here is the style: [STYLE: Modern, clean with subtle gradients and warm tones.]";
+        assert_eq!(
+            extract_style_description(text),
+            Some("Modern, clean with subtle gradients and warm tones.".to_string())
+        );
     }
 
-    if !path.exists() {
-        std::fs::write(
-            &path,
-            "# ailloy AI configuration — https://github.com/mklab-se/ailloy\n\n\
-             nodes:\n  default:\n    provider: openai\n    model: gpt-4o\n    # api_key: sk-...\n",
-        )?;
+    #[test]
+    fn test_extract_style_description_empty() {
+        assert_eq!(extract_style_description("[STYLE: ]"), None);
     }
 
-    let editor = resolve_editor();
-    println!("Opening {} in {editor}...", path.display());
-    let status = std::process::Command::new(&editor).arg(&path).status()?;
-
-    if !status.success() {
-        anyhow::bail!("Editor exited with non-zero status");
+    #[test]
+    fn test_extract_style_description_missing() {
+        assert_eq!(extract_style_description("No marker here"), None);
     }
 
-    Ok(())
-}
-
-/// Resolve the best available editor: $VISUAL → $EDITOR → code → vi
-fn resolve_editor() -> String {
-    if let Ok(v) = std::env::var("VISUAL") {
-        if !v.is_empty() {
-            return v;
-        }
-    }
-    if let Ok(v) = std::env::var("EDITOR") {
-        if !v.is_empty() {
-            return v;
-        }
-    }
-    // Detect VS Code on PATH
-    if which("code") {
-        return "code".to_string();
-    }
-    "vi".to_string()
-}
-
-fn which(cmd: &str) -> bool {
-    std::process::Command::new("which")
-        .arg(cmd)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
-}
-
-fn disabled_marker_path() -> std::path::PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join(APP_NAME)
-        .join("ai_disabled")
-}
-
-fn is_disabled() -> bool {
-    disabled_marker_path().exists()
-}
-
-fn print_node_info(id: &str, node: &ailloy::config::AiNode) {
-    println!("  {} {}", "Node:".bold(), id.cyan());
-    println!("  {} {:?}", "Provider:".bold(), node.provider);
-    if let Some(ref model) = node.model {
-        println!("  {} {}", "Model:".bold(), model);
-    }
-    if let Some(ref alias) = node.alias {
-        println!("  {} {}", "Alias:".bold(), alias);
+    #[test]
+    fn test_extract_style_description_multiline() {
+        let text = "I suggest:\n[STYLE: Warm watercolor illustrations with soft edges and muted earth tones. Hand-drawn feel with visible brushstrokes.]\nWhat do you think?";
+        assert_eq!(
+            extract_style_description(text),
+            Some(
+                "Warm watercolor illustrations with soft edges and muted earth tones. Hand-drawn feel with visible brushstrokes.".to_string()
+            )
+        );
     }
 }

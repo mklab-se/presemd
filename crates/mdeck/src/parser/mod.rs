@@ -213,7 +213,7 @@ fn classify_layout(directives: &[Directive], blocks: &[Block]) -> Layout {
                 "quote" => Layout::Quote,
                 "code" => Layout::Code,
                 "bullets" | "bullet" => Layout::Bullet,
-                "diagram" => Layout::Diagram,
+                "diagram" | "architecture" => Layout::Diagram,
                 "visualization" => Layout::Visualization,
                 "two-column" => Layout::TwoColumn,
                 _ => Layout::Content,
@@ -436,7 +436,7 @@ mod tests {
 
     #[test]
     fn test_poker_night_parses() {
-        let content = include_str!("../../../../sample-presentations/poker-night.md");
+        let content = include_str!("../../../../samples/poker-night.md");
         let pres = parse(content, Path::new("."));
         assert_eq!(pres.meta.theme.as_deref(), Some("dark"));
         assert_eq!(pres.meta.transition.as_deref(), Some("slide"));
@@ -450,7 +450,7 @@ mod tests {
 
     #[test]
     fn test_saloon_workshop_parses() {
-        let content = include_str!("../../../../sample-presentations/saloon-workshop.md");
+        let content = include_str!("../../../../samples/saloon-workshop.md");
         let pres = parse(content, Path::new("."));
         assert_eq!(pres.meta.theme.as_deref(), Some("light"));
         assert_eq!(pres.meta.transition.as_deref(), Some("fade"));

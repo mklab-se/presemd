@@ -887,20 +887,21 @@ fn draw_routed_edge(
         let mid_distance = total_len * 0.20;
         let mid = polyline_point_at_distance(&smooth_points, mid_distance);
         let label_font_size = theme.body_size * 0.65 * scale;
-        let label_padding = 5.0 * scale;
+        let label_pad_h = 10.0 * scale;
+        let label_pad_v = 5.0 * scale;
         let galley = painter.layout_no_wrap(
             label.to_string(),
             FontId::proportional(label_font_size),
             label_text_color,
         );
-        let label_w = galley.rect.width() + label_padding * 2.0;
-        let label_h = galley.rect.height() + label_padding * 2.0;
+        let label_w = galley.rect.width() + label_pad_h * 2.0;
+        let label_h = galley.rect.height() + label_pad_v * 2.0;
         let label_rect = egui::Rect::from_center_size(mid, egui::vec2(label_w, label_h));
         painter.rect_filled(label_rect, label_h / 2.0, label_bg);
         painter.galley(
             egui::pos2(
-                label_rect.left() + label_padding,
-                label_rect.top() + label_padding,
+                label_rect.left() + label_pad_h,
+                label_rect.top() + label_pad_v,
             ),
             galley,
             label_text_color,
@@ -2162,7 +2163,6 @@ pub fn draw_diagram_sized(
     // ── Draw edges (orthogonal routing) ────────────────────────────────────
 
     let edge_palette = theme.edge_palette();
-    let label_bg = Theme::with_opacity(theme.code_background, opacity * 0.9);
     let label_text_color = Theme::with_opacity(theme.foreground, opacity * 0.8);
     let line_width = 4.0 * scale;
     let arrow_size = 20.0 * scale;
@@ -2358,13 +2358,15 @@ pub fn draw_diagram_sized(
             }
         };
 
+        // Use edge color as label background so labels visually match their edge
+        let edge_label_bg = Theme::with_opacity(current_edge_color, opacity * 0.80);
         draw_routed_edge(
             painter,
             &pixel_waypoints,
             edge.arrow,
             &edge.label,
             current_edge_color,
-            label_bg,
+            edge_label_bg,
             label_text_color,
             line_width,
             arrow_size,

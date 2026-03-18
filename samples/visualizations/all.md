@@ -10,7 +10,7 @@ A showcase of every visualization type in MDeck
 
 ## Architecture Diagram
 
-```@diagram
+```@architecture
 - Client -> API Gateway
 - API Gateway -> Auth Service
 - API Gateway -> Cache

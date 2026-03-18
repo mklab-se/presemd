@@ -15,7 +15,7 @@ Testing image side-panel rendering in Bullet, Code, Quote, and Content layouts
 - Third point wrapping up
 - Fourth point for good measure
 
-![Poker scene](images/poker-1.png)
+![Poker scene](../images/poker-1.png)
 
 
 # Code + Image
@@ -28,7 +28,7 @@ fn main() {
 }
 ```
 
-![Poker scene](images/poker-2.png)
+![Poker scene](../images/poker-2.png)
 
 
 # Quote + Image
@@ -37,7 +37,7 @@ fn main() {
 
 -- Alan Kay
 
-![Saloon scene](images/saloon-horizontal.png)
+![Saloon scene](../images/saloon-horizontal.png)
 
 
 # Content + Image
@@ -48,7 +48,7 @@ This slide has a heading, a paragraph, and an image.
 
 It should render as a content+image split layout.
 
-![Poker table](images/poker-3.png)
+![Poker table](../images/poker-3.png)
 
 
 # Bullet + Image (Ordered)
@@ -58,7 +58,7 @@ It should render as a content+image split layout.
 3. Step three follows naturally
 4. Final step completes
 
-![Poker scene](images/poker-4.png)
+![Poker scene](../images/poker-4.png)
 
 
 # Code + Image (Python)
@@ -73,17 +73,17 @@ for i in range(10):
     print(fibonacci(i))
 ```
 
-![Saloon](images/saloon-vertical.png)
+![Saloon](../images/saloon-vertical.png)
 
 
 # Image Only (No Change)
 
-![Poker scene](images/poker-1.png)
+![Poker scene](../images/poker-1.png)
 
 This should still use the Image layout.
 
 
 # Gallery (No Change)
 
-![Scene one](images/poker-1.png)
-![Scene two](images/poker-2.png)
+![Scene one](../images/poker-1.png)
+![Scene two](../images/poker-2.png)

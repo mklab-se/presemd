@@ -84,7 +84,7 @@ Right column intro:
 
 ## Diagram Test
 
-```@diagram
+```@architecture
 - Input: Raw Data
 - Process: Transform
 - Output: Results
