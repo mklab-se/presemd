@@ -47,6 +47,7 @@ crates/
         completion.rs # Shell completion generation
         config.rs    # Config show/set
         export.rs    # PNG export via headless eframe rendering
+        skill.rs     # AI agent skill setup, emit, and reference output
         spec.rs      # Format specification printer
       parser/          # Markdown-to-slide parser (frontmatter, blocks, inlines, splitter)
       render/          # Slide rendering engine
@@ -60,6 +61,7 @@ crates/
       prompt.rs      # AI prompt construction helpers (image/icon style + orientation)
     doc/
       mdeck-spec.md  # Markdown format specification (included via include_str!)
+      ai-reference-supplement.md  # AI reference docs (CLI + image generation guide)
 ```
 
 - **Workspace root** `Cargo.toml` defines shared dependencies and metadata
@@ -85,6 +87,10 @@ mdeck ai style clear         # Remove all styles
 mdeck ai style set-default <name>       # Set default image style
 mdeck ai style set-icon-default <name>  # Set default icon style
 mdeck ai style show-defaults            # Show current defaults
+mdeck ai skill               # AI agent skill setup guide
+mdeck ai skill --emit        # Output skill file for Claude Code
+mdeck ai skill --reference   # Output full reference for AI agents
+mdeck ai status              # Show AI status (explicit alias)
 mdeck config show            # Display configuration
 mdeck config set <key> <val> # Set config value (defaults.theme, defaults.transition, defaults.aspect)
 mdeck export <file.md>       # Export slides as PNG images (1920x1080 default)

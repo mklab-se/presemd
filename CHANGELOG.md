@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.13.0] - 2026-03-20
+
+### Added
+
+- **AI agent skill command** (`mdeck ai skill`) — setup guide and skill file emitter for AI agents like Claude Code. `--emit` outputs a ready-to-save skill file, `--reference` outputs the full format spec and AI reference documentation at runtime.
+- **Explicit `mdeck ai status` subcommand** — alias for running `mdeck ai` without arguments.
+- **AI reference supplement** (`ai-reference-supplement.md`) — comprehensive CLI and AI image generation reference bundled into the binary for AI agent consumption.
+
 ## [0.12.3] - 2026-03-19
 
 ### Added

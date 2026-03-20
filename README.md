@@ -296,6 +296,7 @@ mdeck completion <shell>     # Generate shell completions
 mdeck config show            # Display current settings
 mdeck config set <key> <val> # Set config value
 mdeck ai                     # Show AI status
+mdeck ai status              # Show AI status (explicit)
 mdeck ai enable              # Enable AI features
 mdeck ai disable             # Disable AI features
 mdeck ai test                # Test AI integration
@@ -305,6 +306,9 @@ mdeck ai generate-image      # Generate a single image from a prompt
 mdeck ai style list          # List defined image styles
 mdeck ai style add <n> <d>   # Add a named style
 mdeck ai style set-default   # Set the default image style
+mdeck ai skill               # AI agent skill setup guide
+mdeck ai skill --emit        # Output skill file for Claude Code
+mdeck ai skill --reference   # Output full reference for AI agents
 ```
 
 ### Keyboard Controls
