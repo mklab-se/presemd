@@ -7,6 +7,7 @@ pub mod bar_chart;
 pub mod donut_chart;
 pub mod funnel_chart;
 pub mod gantt_chart;
+pub mod git_graph;
 pub mod kpi_cards;
 pub mod line_chart;
 pub mod org_chart;

@@ -125,6 +125,9 @@ pub enum Block {
     GanttChart {
         content: String,
     },
+    GitGraph {
+        content: String,
+    },
     ColumnSeparator,
 }
 
@@ -319,7 +322,8 @@ fn classify_layout(directives: &[Directive], blocks: &[Block]) -> Layout {
             | Block::ProgressBars { .. }
             | Block::ScatterPlot { .. }
             | Block::OrgChart { .. }
-            | Block::GanttChart { .. } => visualizations += 1,
+            | Block::GanttChart { .. }
+            | Block::GitGraph { .. } => visualizations += 1,
             Block::Table { .. } => tables += 1,
             Block::ColumnSeparator => column_separators += 1,
             Block::HorizontalRule => {}
@@ -437,7 +441,8 @@ pub fn compute_max_steps(blocks: &[Block]) -> usize {
             | Block::ProgressBars { content }
             | Block::ScatterPlot { content }
             | Block::OrgChart { content }
-            | Block::GanttChart { content } => {
+            | Block::GanttChart { content }
+            | Block::GitGraph { content } => {
                 crate::render::visualizations::count_viz_steps(content)
             }
             _ => 0,

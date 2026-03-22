@@ -515,7 +515,8 @@ pub fn measure_single_block_height(
         | Block::ProgressBars { .. }
         | Block::ScatterPlot { .. }
         | Block::OrgChart { .. }
-        | Block::GanttChart { .. } => 500.0 * scale, // visualizations fill available space
+        | Block::GanttChart { .. }
+        | Block::GitGraph { .. } => 500.0 * scale, // visualizations fill available space
         _ => theme.body_size * scale * 1.5,
     }
 }
@@ -804,6 +805,17 @@ pub fn draw_block(
                 scale,
             )
         }
+        Block::GitGraph { content } => crate::render::visualizations::git_graph::draw_gitgraph(
+            ui,
+            content,
+            theme,
+            pos,
+            max_width,
+            0.0,
+            opacity,
+            reveal_step,
+            scale,
+        ),
         Block::HorizontalRule => {
             let color = Theme::with_opacity(theme.accent, opacity * 0.5);
             let y = pos.y + 10.0 * scale;

@@ -83,6 +83,7 @@ VISUALIZATIONS (fenced code blocks with @ language tag)
   @venn          Venn diagram (- Set: item1, item2)
   @orgchart      Org chart (- Name (parent: Parent))
   @gantt         Gantt chart (- Task: date, duration, after Dep; # labels: inside)
+  @gitgraph      Git branch graph (- branch X from Y, - merge X -> Y: label)
 
 GANTT CHART DURATION FORMATS
   Nd             Calendar days (e.g. 10d)

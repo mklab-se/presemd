@@ -167,6 +167,7 @@ Write data visualizations directly in markdown using fenced code blocks:
 | Org chart | `@orgchart` | `- CEO -> CTO` |
 | Gantt chart | `@gantt` | `- Design: 8d, after Research` |
 | Architecture | `@architecture` | `- Client -> Server` |
+| Git graph | `@gitgraph` | `- branch develop from main` |
 
 All visualizations support progressive reveal with `+` markers.
 

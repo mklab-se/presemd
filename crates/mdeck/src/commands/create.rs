@@ -818,6 +818,7 @@ Supported mdeck visualizations:
 - barchart, linechart, piechart, donut, stackedbar, scatter (data charts)
 - timeline, gantt (temporal)
 - orgchart, architecture (structural)
+- gitgraph (git branch diagrams: branches, commits, merges)
 - kpi, progress, funnel (metrics)
 - radar, venn (comparison)
 - wordcloud (text analysis)

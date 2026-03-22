@@ -179,6 +179,7 @@ Before every release, verify these are up to date:
     - `linechart.md` — line charts (single/multi series, axis labels)
     - `orgchart.md` — org charts (basic, deep hierarchy, reveal)
     - `gantt.md` — gantt charts (basic, dependencies, delays, long timeline, many tasks, reveal)
+    - `gitgraph.md` — git branch graphs (basic, Git Flow, hotfix, multiple features, reveal)
     - `piechart.md` — pie charts (basic, many slices, reveal)
     - `progress.md` — progress bars (basic, many bars, reveal)
     - `radar.md` — radar charts (single/multi series, reveal)

@@ -232,6 +232,7 @@ fn parse_code_block(lines: &[&str], start: usize, fence_char: char) -> (Block, u
         VizKind::ScatterPlot => Block::ScatterPlot { content: code },
         VizKind::OrgChart => Block::OrgChart { content: code },
         VizKind::GanttChart => Block::GanttChart { content: code },
+        VizKind::GitGraph => Block::GitGraph { content: code },
         VizKind::None => Block::CodeBlock {
             language,
             code,
@@ -261,6 +262,7 @@ enum VizKind {
     ScatterPlot,
     OrgChart,
     GanttChart,
+    GitGraph,
 }
 
 fn parse_code_info(info: &str) -> (Option<String>, Vec<usize>, VizKind) {
@@ -316,6 +318,9 @@ fn parse_code_info(info: &str) -> (Option<String>, Vec<usize>, VizKind) {
     }
     if info.starts_with("@gantt") {
         return (None, vec![], VizKind::GanttChart);
+    }
+    if info.starts_with("@gitgraph") {
+        return (None, vec![], VizKind::GitGraph);
     }
 
     // Parse language and optional highlight spec

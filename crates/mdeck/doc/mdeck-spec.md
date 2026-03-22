@@ -1334,3 +1334,31 @@ Project timeline with tasks, durations, dependencies, and automatic time scaling
 - Months (for longer timelines)
 
 Dependencies are shown as connector arrows between tasks.
+
+### 14.17 Git Graph (`@gitgraph`)
+
+Visualizes git branching, committing, and merging as a horizontal lane diagram. Useful for illustrating branching strategies like Git Flow, or showing actual repository history.
+
+```
+```@gitgraph
+- branch main
+- branch develop from main
++ branch feature/login from develop
++ commit feature/login: "Add login form"
++ merge feature/login -> develop: "PR #42"
++ branch release/1.0 from develop
++ merge release/1.0 -> main: "v1.0"
+* merge release/1.0 -> develop
+```
+```
+
+**Line types:**
+- `branch <name>` — define a root branch (rendered as a horizontal lane)
+- `branch <name> from <parent>` — fork a new branch from an existing one
+- `commit <branch>: "message"` — add a commit to a branch (optional, for detail)
+- `merge <source> -> <target>` — merge one branch into another
+- `merge <source> -> <target>: "label"` — merge with a label
+
+**Rendering:** Branches are stacked vertically as parallel horizontal lanes. Commits appear as dots on the lane. Forks and merges are shown as curved connections between lanes. Each branch gets a distinct color from the theme palette.
+
+**Progressive reveal:** Use `+` and `*` markers to build the graph step by step — ideal for walking through a branching strategy one operation at a time.

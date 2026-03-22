@@ -6,8 +6,9 @@ use crate::parser::{Block, Slide};
 use crate::render::image_cache::ImageCache;
 use crate::render::text;
 use crate::render::visualizations::{
-    bar_chart, donut_chart, funnel_chart, gantt_chart, kpi_cards, line_chart, org_chart, pie_chart,
-    progress_bars, radar_chart, scatter_plot, stacked_bar, timeline, venn_diagram, word_cloud,
+    bar_chart, donut_chart, funnel_chart, gantt_chart, git_graph, kpi_cards, line_chart, org_chart,
+    pie_chart, progress_bars, radar_chart, scatter_plot, stacked_bar, timeline, venn_diagram,
+    word_cloud,
 };
 use crate::theme::Theme;
 
@@ -29,6 +30,7 @@ fn is_viz_block(block: &Block) -> bool {
             | Block::ScatterPlot { .. }
             | Block::OrgChart { .. }
             | Block::GanttChart { .. }
+            | Block::GitGraph { .. }
     )
 }
 
@@ -315,6 +317,19 @@ pub fn render(
                         opacity,
                         reveal_step,
                         ts,
+                        scale,
+                    );
+                }
+                Block::GitGraph { content } => {
+                    git_graph::draw_gitgraph(
+                        ui,
+                        content,
+                        theme,
+                        viz_pos,
+                        content_width,
+                        remaining_height,
+                        opacity,
+                        reveal_step,
                         scale,
                     );
                 }
