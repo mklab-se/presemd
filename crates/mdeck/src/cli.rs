@@ -176,7 +176,7 @@ pub struct CreateArgs {
     #[arg(long)]
     pub prompt: Option<String>,
 
-    /// Interactive mode: ask questions before generating
+    /// Interactive mode: guided conversation to shape the presentation before generating
     #[arg(short, long)]
     pub interactive: bool,
 

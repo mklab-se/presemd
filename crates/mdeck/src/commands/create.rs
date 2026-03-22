@@ -34,7 +34,7 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
     }
 
     // Step 1: Resolve and extract input content
-    let (source_label, content) = resolve_input(&args)?;
+    let (source_label, content) = resolve_input(&args, quiet)?;
     let word_count = content.split_whitespace().count();
 
     if content.trim().is_empty() {
@@ -192,7 +192,7 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
 
 /// Resolve the input source and extract text content.
 /// Returns (source_label, extracted_text).
-fn resolve_input(args: &CreateArgs) -> Result<(String, String)> {
+fn resolve_input(args: &CreateArgs, quiet: bool) -> Result<(String, String)> {
     if let Some(ref input) = args.input {
         // Check if it's a file path
         let path = Path::new(input);
@@ -215,6 +215,34 @@ fn resolve_input(args: &CreateArgs) -> Result<(String, String)> {
             anyhow::bail!("No content received from stdin.");
         }
         return Ok(("(stdin)".to_string(), content));
+    }
+
+    // Interactive mode — ask for input
+    if args.interactive {
+        if !quiet {
+            eprintln!(
+                "{} What should the presentation be about?",
+                "?".green().bold()
+            );
+            eprintln!("  Enter a file path, or describe the topic in your own words.");
+            eprintln!();
+        }
+        eprint!("{} ", ">".bold());
+        io::stderr().flush()?;
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim().to_string();
+        if input.is_empty() {
+            anyhow::bail!("No input provided.");
+        }
+        // Check if they typed a file path
+        let path = Path::new(&input);
+        if path.exists() && path.is_file() {
+            let label = format!("{}", path.display());
+            let content = extract_from_file(path)?;
+            return Ok((label, content));
+        }
+        return Ok(("(text input)".to_string(), input));
     }
 
     // No input provided — show help (same as --help)
@@ -871,7 +899,7 @@ mod tests {
             interactive: false,
             style: None,
         };
-        let (label, content) = resolve_input(&args).unwrap();
+        let (label, content) = resolve_input(&args, true).unwrap();
         assert_eq!(label, "(text input)");
         assert_eq!(content, "A presentation about Rust programming");
     }
@@ -888,7 +916,7 @@ mod tests {
             interactive: false,
             style: None,
         };
-        let (label, content) = resolve_input(&args).unwrap();
+        let (label, content) = resolve_input(&args, true).unwrap();
         assert!(label.contains("Cargo.toml"));
         assert!(content.contains("mdeck"));
     }
@@ -903,7 +931,7 @@ mod tests {
             style: None,
         };
         // This should error when stdin is a terminal
-        let result = resolve_input(&args);
+        let result = resolve_input(&args, true);
         assert!(result.is_err());
     }
 
