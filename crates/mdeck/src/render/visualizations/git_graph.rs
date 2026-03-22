@@ -204,27 +204,50 @@ pub fn draw_gitgraph(
         Theme::with_opacity(palette[idx % palette.len()], op)
     };
 
-    let total_events = items.len().max(1);
-    let event_spacing = usable_width / total_events as f32;
+    // Assign timeline positions using floating-point for fine control:
+    // - Root branches share position 0
+    // - Branch forks get a small offset (0.3) from the current position
+    // - Commits and merges advance by 1.0
+    // This keeps the spacing CONSISTENT regardless of how many items are revealed,
+    // by always using the TOTAL event count to calculate spacing.
+    let mut timeline_positions: Vec<f32> = Vec::new();
+    let mut timeline_pos: f32 = 0.0;
+    let mut total_timeline_pos: f32 = 0.0;
+    for item in &items {
+        match item {
+            GitGraphItem::Branch { from: None, .. } => {
+                timeline_positions.push(0.0);
+            }
+            GitGraphItem::Branch { from: Some(_), .. } => {
+                // Fork: small offset so the dot is near the parent
+                timeline_pos += 0.3;
+                total_timeline_pos += 0.3;
+                timeline_positions.push(timeline_pos);
+            }
+            GitGraphItem::Commit { .. } | GitGraphItem::Merge { .. } => {
+                timeline_pos += 1.0;
+                total_timeline_pos += 1.0;
+                timeline_positions.push(timeline_pos);
+            }
+        }
+    }
+    let max_timeline = total_timeline_pos.max(1.0);
+    let event_spacing = usable_width / max_timeline;
 
-    // Compute X position for each item
-    let item_x = |idx: usize| -> f32 { pos.x + label_margin + event_spacing * (idx as f32 + 0.5) };
+    // Compute X position for each item based on its timeline position
+    let item_x = |idx: usize| -> f32 {
+        let tp = timeline_positions.get(idx).copied().unwrap_or(0.0);
+        pos.x + label_margin + event_spacing * tp
+    };
 
     // Track where each branch starts and ends (X range) for drawing lane lines
     let mut branch_start_x: std::collections::HashMap<String, f32> =
         std::collections::HashMap::new();
     let mut branch_end_x: std::collections::HashMap<String, f32> = std::collections::HashMap::new();
 
-    // Determine the rightmost visible X position for extending branch lines
-    let mut max_visible_x = pos.x + label_margin + 50.0 * scale;
-    for (i, _item) in items.iter().enumerate() {
-        let step = steps.get(i).copied().unwrap_or(0);
-        if step <= reveal_step {
-            max_visible_x = max_visible_x.max(item_x(i));
-        }
-    }
-    // Extend a bit past the last event
-    let right_edge = max_visible_x + event_spacing * 0.5;
+    // Branch lines always extend to the full right edge of the available space.
+    // This ensures branches look like continuous timelines even during early reveal steps.
+    let right_edge = pos.x + max_width - right_margin;
 
     // First pass: determine branch extents
     // Branches that are "long-lived" (main, develop) extend to the right edge.
@@ -312,33 +335,46 @@ pub fn draw_gitgraph(
         }
     }
 
-    // Draw arrows between consecutive commits on each branch
+    // Draw branch lines: arrows between consecutive events, plus a line
+    // extending from the last event to the right edge for active branches.
     for branch in &branch_order {
         let Some(positions) = branch_events.get(branch) else {
             continue;
         };
-        if positions.len() < 2 {
-            continue;
-        }
         let y = branch_y(branch);
         let color = branch_color(branch, opacity);
+        let is_merged = merged_branches.contains(branch);
 
+        // Draw arrows between consecutive events on this branch
         for pair in positions.windows(2) {
             let x1 = pair[0] + dot_radius;
             let x2 = pair[1] - dot_radius;
             if x2 > x1 + arrow_size {
-                // Line segment
                 painter.line_segment(
                     [Pos2::new(x1, y), Pos2::new(x2, y)],
                     Stroke::new(line_width, color),
                 );
-                // Arrowhead
                 draw_arrowhead(painter, Pos2::new(x2, y), arrow_size, 0.0, color);
             } else if x2 > x1 {
                 painter.line_segment(
                     [Pos2::new(x1, y), Pos2::new(x2, y)],
                     Stroke::new(line_width, color),
                 );
+            }
+        }
+
+        // Extend the branch line from the last event to the right edge
+        // (unless the branch has been merged away)
+        if !is_merged {
+            let last_x = positions.last().copied().unwrap_or(0.0);
+            let extend_to = right_edge;
+            if extend_to > last_x + dot_radius + arrow_size {
+                let faded = branch_color(branch, opacity * 0.5);
+                painter.line_segment(
+                    [Pos2::new(last_x + dot_radius, y), Pos2::new(extend_to, y)],
+                    Stroke::new(line_width, faded),
+                );
+                draw_arrowhead(painter, Pos2::new(extend_to, y), arrow_size, 0.0, faded);
             }
         }
     }
