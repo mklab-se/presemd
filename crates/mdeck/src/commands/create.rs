@@ -33,7 +33,7 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
         eprintln!();
     }
 
-    // Step 1: Resolve and extract input content
+    // Step 1: Resolve input content
     let (source_label, content) = resolve_input(&args, quiet)?;
     let word_count = content.split_whitespace().count();
 
@@ -50,48 +50,44 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
         );
     }
 
-    // Step 2: Interactive mode — gather additional context
-    let user_prompt = if args.interactive {
-        gather_interactive_context(&args, &source_label, word_count)?
+    let client = ailloy::Client::for_capability("chat")?;
+
+    // Step 2: Interactive mode — AI-driven conversation to shape the presentation
+    let context = if args.interactive {
+        run_interactive_chat(&client, &content, args.prompt.as_deref(), quiet).await?
     } else {
-        args.prompt.clone()
+        // Non-interactive: use --prompt directly or a sensible default
+        args.prompt
+            .clone()
+            .unwrap_or_else(|| "General audience. Focus on key takeaways.".to_string())
     };
 
-    // Step 3: Analyze content and create outline
+    // Step 3: Determine output filename
+    let output_file = if args.output == Path::new("presentation.md") && !quiet {
+        // Default output — ask AI for a good name
+        let suggested = suggest_filename(&client, &context).await?;
+        let (file, _) = resolve_output(Path::new(&suggested))?;
+        eprintln!("  {} {}", "Output:".bold(), file.display());
+        file
+    } else {
+        let (file, _) = resolve_output(&args.output)?;
+        file
+    };
+    let output_dir = output_file
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."))
+        .to_path_buf();
+
+    // Step 4: Generate the presentation (analysis + slide generation in one pipeline)
     if !quiet {
         eprintln!();
-        eprintln!("{}", "Analyzing content...".bold());
-        eprintln!();
     }
 
-    let client = ailloy::Client::for_capability("chat")?;
-    let outline = run_analysis(&client, &content, user_prompt.as_deref(), quiet).await?;
+    let (presentation_md, opportunities) =
+        run_pipeline(&client, &content, &context, &args.style, quiet).await?;
 
-    // Step 4: Interactive confirmation
-    if args.interactive {
-        eprintln!();
-        eprint!("{} Generate this presentation? [Y/n] ", "?".green().bold());
-        io::stderr().flush()?;
-        let mut confirm = String::new();
-        io::stdin().read_line(&mut confirm)?;
-        let confirm = confirm.trim().to_lowercase();
-        if confirm == "n" || confirm == "no" {
-            eprintln!("{} Cancelled.", "!".yellow().bold());
-            return Ok(());
-        }
-    }
-
-    // Step 5: Generate slide content
-    if !quiet {
-        eprintln!();
-        eprintln!("{}", "Generating presentation...".bold());
-        eprintln!();
-    }
-
-    let presentation_md = run_generation(&client, &outline, user_prompt.as_deref(), quiet).await?;
-
-    // Step 6: Write output
-    let (output_file, output_dir) = resolve_output(&args.output)?;
+    // Step 5: Write output
     std::fs::create_dir_all(&output_dir).with_context(|| {
         format!(
             "Failed to create output directory: {}",
@@ -99,21 +95,10 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
         )
     })?;
 
-    // Check for existing file
-    if output_file.exists() && !args.interactive {
-        eprintln!(
-            "{} Output file already exists: {}",
-            "!".yellow().bold(),
-            output_file.display()
-        );
-        eprintln!("  Overwriting...");
-    }
-
     std::fs::write(&output_file, &presentation_md)
         .with_context(|| format!("Failed to write output: {}", output_file.display()))?;
 
     if !quiet {
-        eprintln!();
         eprintln!(
             "{} Presentation created: {}",
             "✓".green().bold(),
@@ -121,8 +106,7 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
         );
     }
 
-    // Step 7: Handle visualization opportunities
-    let opportunities = extract_opportunities(&outline);
+    // Step 6: Handle visualization opportunities
     if !opportunities.is_empty() {
         let opp_file = output_dir.join("visualization-opportunities.md");
         write_opportunities(&opp_file, &opportunities)?;
@@ -139,31 +123,29 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
             );
             eprintln!("    See: {}", opp_file.display());
             eprintln!(
-                "    Consider sharing this as an issue at: {}",
+                "    Consider sharing as an issue: {}",
                 "https://github.com/mklab-se/mdeck/issues/new".cyan()
             );
         }
     }
 
-    // Step 8: Check for image generation markers
+    // Step 7: Check for image generation markers
     let image_count = presentation_md.matches("(image-generation)").count();
-    if image_count > 0 {
+    if image_count > 0 && !quiet {
         if ai::has_capability("image") {
-            if !quiet {
-                eprintln!(
-                    "  {} {} image{} marked for AI generation.",
-                    "ℹ".blue().bold(),
-                    image_count,
-                    if image_count == 1 { "" } else { "s" }
-                );
-                eprintln!(
-                    "    Run: {} to generate them.",
-                    format!("mdeck ai generate {}", output_file.display()).cyan()
-                );
-            }
-        } else if !quiet {
             eprintln!(
-                "  {} {} image{} marked for generation, but no image provider configured.",
+                "  {} {} image{} marked for AI generation.",
+                "ℹ".blue().bold(),
+                image_count,
+                if image_count == 1 { "" } else { "s" }
+            );
+            eprintln!(
+                "    Run: {} to generate them.",
+                format!("mdeck ai generate {}", output_file.display()).cyan()
+            );
+        } else {
+            eprintln!(
+                "  {} {} image{} marked but no image provider configured.",
                 "ℹ".blue().bold(),
                 image_count,
                 if image_count == 1 { "" } else { "s" }
@@ -176,7 +158,6 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
         }
     }
 
-    // Suggest launching the presentation
     if !quiet {
         eprintln!();
         eprintln!(
@@ -194,14 +175,12 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
 /// Returns (source_label, extracted_text).
 fn resolve_input(args: &CreateArgs, quiet: bool) -> Result<(String, String)> {
     if let Some(ref input) = args.input {
-        // Check if it's a file path
         let path = Path::new(input);
         if path.exists() && path.is_file() {
             let label = format!("{}", path.display());
             let content = extract_from_file(path)?;
             return Ok((label, content));
         }
-        // Treat as literal text
         return Ok(("(text input)".to_string(), input.clone()));
     }
 
@@ -235,7 +214,6 @@ fn resolve_input(args: &CreateArgs, quiet: bool) -> Result<(String, String)> {
         if input.is_empty() {
             anyhow::bail!("No input provided.");
         }
-        // Check if they typed a file path
         let path = Path::new(&input);
         if path.exists() && path.is_file() {
             let label = format!("{}", path.display());
@@ -245,10 +223,9 @@ fn resolve_input(args: &CreateArgs, quiet: bool) -> Result<(String, String)> {
         return Ok(("(text input)".to_string(), input));
     }
 
-    // No input provided — show help (same as --help)
+    // No input provided — show help
     use clap::CommandFactory;
     let mut cmd = crate::cli::Cli::command();
-    // Navigate to: mdeck → ai → create
     for sub in cmd.get_subcommands_mut() {
         if sub.get_name() == "ai" {
             for sub2 in sub.get_subcommands_mut() {
@@ -274,11 +251,8 @@ fn extract_from_file(path: &Path) -> Result<String> {
     match ext.as_str() {
         "pdf" => extract_pdf(path),
         "docx" => extract_docx(path),
-        _ => {
-            // Assume text-based file (md, txt, etc.)
-            std::fs::read_to_string(path)
-                .with_context(|| format!("Failed to read file: {}", path.display()))
-        }
+        _ => std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read file: {}", path.display())),
     }
 }
 
@@ -302,10 +276,6 @@ fn extract_pdf(path: &Path) -> Result<String> {
 }
 
 /// Extract text from a DOCX file.
-///
-/// DOCX files are ZIP archives containing XML. We extract text from
-/// `word/document.xml` by collecting content within `<w:t>` tags,
-/// adding newlines at `<w:p>` boundaries (paragraphs).
 fn extract_docx(path: &Path) -> Result<String> {
     let file = std::fs::File::open(path)
         .with_context(|| format!("Failed to open DOCX: {}", path.display()))?;
@@ -334,9 +304,6 @@ fn extract_docx(path: &Path) -> Result<String> {
 }
 
 /// Extract plain text from DOCX XML content.
-///
-/// Collects text within `<w:t>` tags, inserting newlines at `</w:p>` paragraph boundaries.
-/// Ignores `<w:tbl>` to avoid confusion with `<w:t>`.
 fn extract_text_from_docx_xml(xml: &str) -> String {
     let mut text = String::new();
     let mut in_text_tag = false;
@@ -368,123 +335,310 @@ fn extract_text_from_docx_xml(xml: &str) -> String {
     text
 }
 
-// ── Interactive mode ────────────────────────────────────────────────────────
+// ── Interactive AI chat ─────────────────────────────────────────────────────
 
-/// Gather additional context from the user in interactive mode.
-fn gather_interactive_context(
-    args: &CreateArgs,
-    source_label: &str,
-    word_count: usize,
-) -> Result<Option<String>> {
+const INTERACTIVE_SYSTEM_PROMPT: &str = "\
+You are a presentation design consultant for mdeck, a markdown-based presentation tool. \
+You're having a conversation with someone who wants to create a presentation. \
+Your goal is to understand what they need so you can create the best possible presentation.
+
+Through natural conversation, learn about:
+- Who the audience is (technical level, relationship to the topic)
+- What the goal of the presentation is (inform, persuade, teach, decide)
+- What key messages they want the audience to take away
+- The tone and style (formal, casual, technical, inspirational)
+- How long the presentation should be (number of slides)
+- Any specific content they want included or excluded
+
+Be conversational and helpful — ask one or two questions at a time, not a list. \
+Build on what they tell you. If they provided source content, reference it specifically.
+
+When you feel you have enough information to create a great presentation, \
+summarize what you've agreed on in 2-3 concise paragraphs and end with exactly this marker:
+
+[READY]
+
+The summary before [READY] should cover: topic, audience, goal, key messages, tone, and approximate length. \
+This summary will be used to guide the presentation generation.
+
+If the user says /start or wants to proceed before you're fully ready, \
+write your best summary with what you know and include [READY].
+
+Keep your responses concise — this is a terminal chat, not an essay.";
+
+/// Run an interactive AI chat to gather presentation context.
+async fn run_interactive_chat(
+    client: &ailloy::Client,
+    content: &str,
+    initial_prompt: Option<&str>,
+    _quiet: bool,
+) -> Result<String> {
     eprintln!(
-        "\n  {} {} ({} words)",
-        "Source:".bold(),
-        source_label,
-        word_count
+        "  {} Type {} to start generation, {} to exit.\n",
+        "ℹ".blue().bold(),
+        "/start".bold(),
+        "/quit".bold()
     );
 
-    let mut context_parts: Vec<String> = Vec::new();
+    let mut history: Vec<ailloy::Message> =
+        vec![ailloy::Message::system(INTERACTIVE_SYSTEM_PROMPT)];
 
-    // Use existing prompt if provided
-    if let Some(ref prompt) = args.prompt {
-        eprintln!("  {} {}", "Context:".bold(), prompt);
-        context_parts.push(prompt.clone());
-    }
-
-    // Ask about audience
-    eprintln!();
-    eprint!(
-        "{} Who is the target audience? (press Enter to skip) ",
-        "?".green().bold()
-    );
-    io::stderr().flush()?;
-    let mut audience = String::new();
-    io::stdin().read_line(&mut audience)?;
-    let audience = audience.trim();
-    if !audience.is_empty() {
-        context_parts.push(format!("Target audience: {audience}"));
-    }
-
-    // Ask about purpose
-    eprint!(
-        "{} What is the purpose of this presentation? (press Enter to skip) ",
-        "?".green().bold()
-    );
-    io::stderr().flush()?;
-    let mut purpose = String::new();
-    io::stdin().read_line(&mut purpose)?;
-    let purpose = purpose.trim();
-    if !purpose.is_empty() {
-        context_parts.push(format!("Purpose: {purpose}"));
-    }
-
-    // Ask about emphasis
-    eprint!(
-        "{} Any specific points to emphasize? (press Enter to skip) ",
-        "?".green().bold()
-    );
-    io::stderr().flush()?;
-    let mut emphasis = String::new();
-    io::stdin().read_line(&mut emphasis)?;
-    let emphasis = emphasis.trim();
-    if !emphasis.is_empty() {
-        context_parts.push(format!("Key emphasis: {emphasis}"));
-    }
-
-    // Summary
-    if context_parts.is_empty() {
-        eprintln!("  {} Using defaults (general audience).", "ℹ".blue().bold());
-        Ok(None)
+    // Build the opening message with context
+    let word_count = content.split_whitespace().count();
+    let opening = if let Some(prompt) = initial_prompt {
+        format!(
+            "I want to create a presentation. Here's what I have:\n\n\
+             My description: {prompt}\n\n\
+             Source material: {word_count} words of content provided.\n\n\
+             Start by acknowledging what I've shared and ask me a focused question \
+             to help shape the presentation."
+        )
     } else {
-        let combined = context_parts.join("\n");
-        eprintln!();
-        eprintln!("{}", "  Presentation context:".bold());
-        for part in &context_parts {
-            eprintln!("    • {part}");
+        format!(
+            "I want to create a presentation from some content I have \
+             ({word_count} words of source material). \
+             Start by asking me a focused question about who the audience is \
+             and what I want to achieve with this presentation."
+        )
+    };
+    history.push(ailloy::Message::user(&opening));
+
+    // Get initial AI response
+    let response = stream_chat(client, &history).await?;
+    history.push(ailloy::Message::assistant(&response));
+
+    if let Some(summary) = extract_ready_summary(&response) {
+        return Ok(build_full_context(content, &summary));
+    }
+
+    eprintln!();
+
+    // Chat loop
+    loop {
+        let input = match read_user_input()? {
+            Some(s) => s,
+            None => continue,
+        };
+
+        match input.as_str() {
+            "/quit" | "/exit" | "/q" => {
+                anyhow::bail!("Cancelled.");
+            }
+            "/start" => {
+                // Force the AI to summarize and produce [READY]
+                history.push(ailloy::Message::user(
+                    "I'm ready to generate. Please summarize what we've discussed and proceed.",
+                ));
+                let response = stream_chat(client, &history).await?;
+                history.push(ailloy::Message::assistant(&response));
+                eprintln!();
+
+                let summary = extract_ready_summary(&response).unwrap_or(response);
+                return Ok(build_full_context(content, &summary));
+            }
+            "/help" => {
+                eprintln!("{}", "Commands:".bold());
+                eprintln!("  {} — Start generating the presentation", "/start".bold());
+                eprintln!("  {} — Exit without generating", "/quit".bold());
+                eprintln!("  {} — Show this help", "/help".bold());
+                continue;
+            }
+            s if s.starts_with('/') => {
+                eprintln!(
+                    "{} Unknown command. Type {} for help.",
+                    "!".yellow().bold(),
+                    "/help".bold()
+                );
+                continue;
+            }
+            _ => {}
         }
-        Ok(Some(combined))
+
+        history.push(ailloy::Message::user(&input));
+        let response = stream_chat(client, &history).await?;
+        history.push(ailloy::Message::assistant(&response));
+        eprintln!();
+
+        if let Some(summary) = extract_ready_summary(&response) {
+            return Ok(build_full_context(content, &summary));
+        }
+    }
+}
+
+/// Extract the summary text before the [READY] marker.
+fn extract_ready_summary(text: &str) -> Option<String> {
+    let marker = "[READY]";
+    let idx = text.find(marker)?;
+    let summary = text[..idx].trim().to_string();
+    if summary.is_empty() {
+        None
+    } else {
+        Some(summary)
+    }
+}
+
+/// Combine source content and chat summary into the full context for generation.
+fn build_full_context(content: &str, summary: &str) -> String {
+    format!(
+        "PRESENTATION BRIEF:\n{summary}\n\n\
+         SOURCE MATERIAL ({} words):\n{content}",
+        content.split_whitespace().count()
+    )
+}
+
+/// Stream a chat response, printing tokens to stderr. Returns assembled text.
+async fn stream_chat(client: &ailloy::Client, history: &[ailloy::Message]) -> Result<String> {
+    let mut stream = client.chat_stream(history).await?;
+    let mut assembled = String::new();
+
+    while let Some(event) = stream.next().await {
+        match event? {
+            ailloy::StreamEvent::Delta(text) => {
+                assembled.push_str(&text);
+                eprint!("{text}");
+                io::stderr().flush()?;
+            }
+            ailloy::StreamEvent::Done(_) => {
+                eprintln!();
+            }
+        }
+    }
+
+    Ok(assembled)
+}
+
+/// Read a line of user input with a `> ` prompt.
+fn read_user_input() -> Result<Option<String>> {
+    eprint!("{} ", ">".bold());
+    io::stderr().flush()?;
+
+    let mut input = String::new();
+    match io::stdin().read_line(&mut input) {
+        Ok(0) => Ok(None),
+        Ok(_) => {
+            let trimmed = input.trim().to_string();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(trimmed))
+            }
+        }
+        Err(e) => Err(e.into()),
     }
 }
 
 // ── AI pipeline ─────────────────────────────────────────────────────────────
 
+/// Suggest a filename based on the presentation context.
+async fn suggest_filename(client: &ailloy::Client, context: &str) -> Result<String> {
+    let messages = vec![
+        ailloy::Message::system(
+            "Given a presentation description, suggest a short kebab-case filename (2-4 words, no extension). \
+             Reply with ONLY the filename, nothing else. Example: git-flow-adoption",
+        ),
+        ailloy::Message::user(context),
+    ];
+    let response = client.chat(&messages).await?;
+    let name = response
+        .content
+        .trim()
+        .trim_matches('"')
+        .trim_matches('`')
+        .to_string();
+    if name.is_empty() || name.len() > 60 {
+        Ok("presentation.md".to_string())
+    } else {
+        Ok(format!("{name}.md"))
+    }
+}
+
+/// Run the full generation pipeline: analyze → generate.
+/// Returns (presentation_markdown, visualization_opportunities).
+async fn run_pipeline(
+    client: &ailloy::Client,
+    content: &str,
+    context: &str,
+    style: &Option<String>,
+    quiet: bool,
+) -> Result<(String, Vec<VisualizationOpportunity>)> {
+    // Step A: Analyze content and create outline (silent — no output to user)
+    if !quiet {
+        eprint!("  {} Analyzing content...", "⠋".dimmed());
+        io::stderr().flush()?;
+    }
+
+    let outline = run_analysis(client, content, context).await?;
+
+    if !quiet {
+        eprint!("\r  {} Content analyzed.   \n", "✓".green().bold());
+    }
+
+    // Extract opportunities from the outline
+    let opportunities = extract_opportunities(&outline);
+
+    // Count slides in outline for progress reporting
+    let slide_count = outline
+        .matches("\"title\"")
+        .count()
+        .saturating_sub(1)
+        .max(1);
+
+    // Step B: Generate slides
+    if !quiet {
+        eprintln!("  {} Generating ~{} slides...", "⠋".dimmed(), slide_count);
+    }
+
+    let presentation_md = run_generation(client, &outline, context, style, &opportunities).await?;
+
+    if !quiet {
+        eprint!("\r  {} Presentation generated.\n", "✓".green().bold());
+    }
+
+    Ok((presentation_md, opportunities))
+}
+
 const ANALYSIS_SYSTEM_PROMPT: &str = "\
 You are a presentation architect for mdeck, a markdown-based presentation tool. \
-Your job is to analyze source content and design a presentation outline.
+Analyze source content and design a presentation outline.
 
-IMPORTANT RULES:
+RULES:
 - Create a concise, engaging presentation — NOT a verbatim reproduction of the source.
-- Think of the source material as detailed reference that could be handed out AFTER the talk.
+- The source material is detailed reference that could be handed out AFTER the talk.
 - The presentation should support a PRESENTER — keep slides focused and visual.
-- Each slide should cover ONE key point or a small group of closely related points.
+- Each slide covers ONE key point or a small group of closely related points.
 - Never overload a slide with information. Less is more.
-- Use progressive reveal (bullet points shown one at a time) where appropriate.
-- Identify where visualizations (charts, diagrams, timelines, etc.) would enhance understanding.
+- Identify where visualizations would enhance understanding.
+- When a visualization would be ideal but mdeck doesn't support it, STILL mark it \
+  and describe the ideal visualization in detail — mdeck will generate an image instead.
 
-Respond with a structured outline in this exact JSON format:
+Respond in JSON:
 ```json
 {
   \"title\": \"Presentation Title\",
+  \"suggested_filename\": \"kebab-case-name\",
   \"slides\": [
     {
       \"title\": \"Slide Title\",
       \"key_points\": [\"point 1\", \"point 2\"],
       \"layout_hint\": \"bullet|code|quote|visualization|image|title|section|two-column\",
       \"visualization\": null,
-      \"notes_hint\": \"Brief description of what the presenter should say\"
+      \"notes_hint\": \"What the presenter should convey and how\"
     }
   ],
   \"opportunities\": [
     {
-      \"slide_title\": \"Which slide\",
-      \"description\": \"What visualization would help\",
-      \"suggested_format\": \"How it could be implemented\"
+      \"slide_title\": \"Which slide this applies to\",
+      \"visualization_name\": \"Short name (e.g. Swimlane Diagram)\",
+      \"description\": \"What this visualization shows and why it would help\",
+      \"data_description\": \"What data or structure it would display\",
+      \"suggested_syntax\": \"Proposed mdeck syntax for this visualization type\",
+      \"fallback_image_prompt\": \"A detailed prompt to generate an image that approximates this visualization\"
     }
   ]
 }
 ```
 
-For the `visualization` field, use one of these mdeck-supported types when appropriate:
+Supported mdeck visualizations:
 - barchart, linechart, piechart, donut, stackedbar, scatter (data charts)
 - timeline, gantt (temporal)
 - orgchart, architecture (structural)
@@ -492,38 +646,19 @@ For the `visualization` field, use one of these mdeck-supported types when appro
 - radar, venn (comparison)
 - wordcloud (text analysis)
 
-If a visualization would be useful but is NOT in the list above, add it to `opportunities` instead.
+If a visualization would be useful but is NOT in the list above, add it to `opportunities` \
+AND set `layout_hint` to `image` for that slide so mdeck generates an image as fallback.
 
-Keep the outline to 8-20 slides for most content. Start with a title slide and end with a summary/conclusion.";
+8-20 slides for most content. Start with title slide, end with summary/conclusion.";
 
-/// Run the content analysis step.
-async fn run_analysis(
-    client: &ailloy::Client,
-    content: &str,
-    user_prompt: Option<&str>,
-    quiet: bool,
-) -> Result<String> {
-    let mut user_message = String::new();
+/// Run the content analysis step (silent — output captured, not printed).
+async fn run_analysis(client: &ailloy::Client, content: &str, context: &str) -> Result<String> {
+    let mut user_message = format!("PRESENTATION CONTEXT:\n{context}\n\nSOURCE CONTENT:\n");
 
-    if let Some(prompt) = user_prompt {
-        user_message.push_str(&format!("PRESENTATION CONTEXT:\n{prompt}\n\n"));
-    }
-
-    user_message.push_str("SOURCE CONTENT:\n");
-
-    // Truncate very long content with a warning
     const MAX_CONTENT_CHARS: usize = 100_000;
     if content.len() > MAX_CONTENT_CHARS {
-        if !quiet {
-            eprintln!(
-                "  {} Content is very large ({} chars). Truncating to {} chars.",
-                "!".yellow().bold(),
-                content.len(),
-                MAX_CONTENT_CHARS
-            );
-        }
         user_message.push_str(&content[..MAX_CONTENT_CHARS]);
-        user_message.push_str("\n\n[Content truncated — focus on the content provided above.]");
+        user_message.push_str("\n\n[Content truncated.]");
     } else {
         user_message.push_str(content);
     }
@@ -533,88 +668,105 @@ async fn run_analysis(
         ailloy::Message::user(&user_message),
     ];
 
-    let response = stream_response(client, &messages, quiet).await?;
-    Ok(response)
-}
-
-/// Run the slide generation step.
-async fn run_generation(
-    client: &ailloy::Client,
-    outline: &str,
-    user_prompt: Option<&str>,
-    quiet: bool,
-) -> Result<String> {
-    let system_prompt = format!(
-        "You are a presentation content generator for mdeck. \
-        Given a slide outline, generate a complete presentation in mdeck markdown format.\n\n\
-        MDECK FORMAT SPECIFICATION:\n{MDECK_SPEC}\n\n\
-        CRITICAL RULES:\n\
-        - Generate valid mdeck markdown that can be directly rendered.\n\
-        - Start with YAML frontmatter (title, author, @theme, @transition).\n\
-        - Use `---` to separate slides.\n\
-        - Include speaker notes after `???` on EVERY slide. Notes should explain:\n\
-          • The intention and purpose of the slide\n\
-          • Key talking points for the presenter\n\
-          • Suggested delivery approach (questions to ask, pauses, emphasis)\n\
-        - Use progressive reveal (`+` markers) for bullet lists where it helps pacing.\n\
-        - Use visualization code blocks (```@barchart, ```@timeline, etc.) where the outline specifies.\n\
-        - Mark images with `![descriptive alt text](image-generation)` for later AI generation.\n\
-        - Keep text concise — this is a presentation, not a document.\n\
-        - Use appropriate heading levels (# for slide titles).\n\
-        - Use **bold** and *italic* for emphasis in slide content.\n\
-        - Output ONLY the markdown content. No explanations or commentary outside the markdown."
-    );
-
-    let mut user_message =
-        String::from("Generate a complete mdeck presentation from this outline:\n\n");
-    user_message.push_str(outline);
-
-    if let Some(prompt) = user_prompt {
-        user_message.push_str(&format!("\n\nADDITIONAL CONTEXT:\n{prompt}"));
-    }
-
-    let messages = vec![
-        ailloy::Message::system(&system_prompt),
-        ailloy::Message::user(&user_message),
-    ];
-
-    let response = stream_response(client, &messages, quiet).await?;
-
-    // Strip markdown code fences if the AI wrapped the output
-    let cleaned = strip_markdown_fences(&response);
-    Ok(cleaned)
-}
-
-/// Stream a chat response, optionally printing tokens to stderr.
-async fn stream_response(
-    client: &ailloy::Client,
-    messages: &[ailloy::Message],
-    quiet: bool,
-) -> Result<String> {
-    let mut stream = client.chat_stream(messages).await?;
+    // Silent — don't print the JSON to the user
+    let mut stream = client.chat_stream(&messages).await?;
     let mut assembled = String::new();
-
     while let Some(event) = stream.next().await {
         match event? {
-            ailloy::StreamEvent::Delta(text) => {
-                assembled.push_str(&text);
-                if !quiet {
-                    eprint!("{text}");
-                    io::stderr().flush()?;
-                }
-            }
-            ailloy::StreamEvent::Done(_) => {
-                if !quiet {
-                    eprintln!();
-                }
-            }
+            ailloy::StreamEvent::Delta(text) => assembled.push_str(&text),
+            ailloy::StreamEvent::Done(_) => {}
         }
     }
 
     Ok(assembled)
 }
 
-/// Strip markdown code fences if the AI wrapped the response in ```markdown ... ```.
+/// Run the slide generation step (silent — output captured, not printed).
+async fn run_generation(
+    client: &ailloy::Client,
+    outline: &str,
+    context: &str,
+    style: &Option<String>,
+    opportunities: &[VisualizationOpportunity],
+) -> Result<String> {
+    let image_style_hint = if let Some(s) = style {
+        format!("\n- Use image style: \"{s}\" for all AI-generated images.")
+    } else {
+        String::new()
+    };
+
+    // Build fallback image instructions for missing visualizations
+    let fallback_instructions = if !opportunities.is_empty() {
+        let mut s = String::from(
+            "\n- For slides where the ideal visualization is not supported by mdeck, \
+             use `![descriptive prompt](image-generation)` to generate an image instead. \
+             Here are the specific fallback prompts to use:\n",
+        );
+        for opp in opportunities {
+            s.push_str(&format!(
+                "  - Slide \"{}\": ![{}](image-generation)\n",
+                opp.slide_title, opp.fallback_image_prompt
+            ));
+        }
+        s
+    } else {
+        String::new()
+    };
+
+    let system_prompt = format!(
+        "You are a presentation content generator for mdeck. \
+        Generate a complete presentation in mdeck markdown format.\n\n\
+        MDECK FORMAT SPECIFICATION:\n{MDECK_SPEC}\n\n\
+        CRITICAL RULES:\n\
+        - Generate valid mdeck markdown.\n\
+        - Start with YAML frontmatter (title, author, @theme, @transition).\n\
+        - Use `---` to separate slides.\n\
+        - Include DETAILED speaker notes after `???` on EVERY slide. Speaker notes must be \
+          thorough enough for someone who has NEVER seen the source material to present \
+          effectively. Each note should include:\n\
+          • The core message of the slide (what the audience should understand)\n\
+          • Detailed talking points (what to say, in what order)\n\
+          • Suggested delivery approach (pause here, ask this question, emphasize this)\n\
+          • Background context the presenter needs to answer audience questions\n\
+          • Transition to the next slide\n\
+        - Use progressive reveal (`+` markers) for bullet lists where it helps pacing.\n\
+        - Use visualization code blocks where the outline specifies them.\n\
+        - For slides where no suitable built-in visualization exists, use \
+          `![descriptive prompt](image-generation)` to generate an image.\n\
+        - Use `![descriptive prompt](image-generation)` for images that genuinely enhance \
+          understanding — diagrams, illustrations of concepts, or visuals that make a point \
+          more compelling. Do NOT add images just for decoration. Every image should earn its \
+          place by making the slide more effective.\n\
+        - Keep slide text concise — the presentation supports the presenter.\n\
+        - Use **bold** and *italic* for emphasis.\n\
+        - Output ONLY the markdown content.{image_style_hint}{fallback_instructions}"
+    );
+
+    let user_message = format!(
+        "Generate a complete mdeck presentation from this outline:\n\n{outline}\n\n\
+         CONTEXT:\n{context}"
+    );
+
+    let messages = vec![
+        ailloy::Message::system(&system_prompt),
+        ailloy::Message::user(&user_message),
+    ];
+
+    // Silent generation — don't print raw markdown
+    let mut stream = client.chat_stream(&messages).await?;
+    let mut assembled = String::new();
+    while let Some(event) = stream.next().await {
+        match event? {
+            ailloy::StreamEvent::Delta(text) => assembled.push_str(&text),
+            ailloy::StreamEvent::Done(_) => {}
+        }
+    }
+
+    let cleaned = strip_markdown_fences(&assembled);
+    Ok(cleaned)
+}
+
+/// Strip markdown code fences if the AI wrapped the response.
 fn strip_markdown_fences(text: &str) -> String {
     let trimmed = text.trim();
     if let Some(rest) = trimmed.strip_prefix("```markdown") {
@@ -629,7 +781,6 @@ fn strip_markdown_fences(text: &str) -> String {
     }
     if let Some(rest) = trimmed.strip_prefix("```") {
         if let Some(content) = rest.strip_suffix("```") {
-            // Only strip if the first line after ``` is empty or looks like frontmatter
             let first_line = content.lines().next().unwrap_or("");
             if first_line.trim().is_empty() || first_line.trim() == "---" {
                 return content.trim().to_string();
@@ -645,7 +796,6 @@ fn strip_markdown_fences(text: &str) -> String {
 fn resolve_output(output: &Path) -> Result<(PathBuf, PathBuf)> {
     let output_str = output.to_string_lossy();
 
-    // If it ends with / or is an existing directory, put presentation.md inside
     if output_str.ends_with('/') || output_str.ends_with('\\') || output.is_dir() {
         let dir = output.to_path_buf();
         let file = dir.join("presentation.md");
@@ -654,7 +804,6 @@ fn resolve_output(output: &Path) -> Result<(PathBuf, PathBuf)> {
         .extension()
         .is_some_and(|ext| ext == "md" || ext == "markdown")
     {
-        // It's a .md file
         let dir = output
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
@@ -662,7 +811,6 @@ fn resolve_output(output: &Path) -> Result<(PathBuf, PathBuf)> {
             .to_path_buf();
         Ok((output.to_path_buf(), dir))
     } else {
-        // Treat as directory
         let dir = output.to_path_buf();
         let file = dir.join("presentation.md");
         Ok((file, dir))
@@ -671,70 +819,209 @@ fn resolve_output(output: &Path) -> Result<(PathBuf, PathBuf)> {
 
 // ── Visualization opportunities ─────────────────────────────────────────────
 
-/// Extract [OPPORTUNITY: ...] markers from the outline.
-fn extract_opportunities(outline: &str) -> Vec<String> {
+/// A structured visualization opportunity extracted from the AI outline.
+#[derive(Debug, Clone)]
+struct VisualizationOpportunity {
+    slide_title: String,
+    visualization_name: String,
+    description: String,
+    data_description: String,
+    suggested_syntax: String,
+    fallback_image_prompt: String,
+}
+
+/// Extract visualization opportunities from the AI outline JSON.
+fn extract_opportunities(outline: &str) -> Vec<VisualizationOpportunity> {
     let mut opportunities = Vec::new();
 
-    // Look for the "opportunities" array in the JSON
-    if let Some(start) = outline.find("\"opportunities\"") {
-        if let Some(arr_start) = outline[start..].find('[') {
-            let arr_content = &outline[start + arr_start..];
-            // Find matching closing bracket
-            let mut depth = 0;
-            let mut end = 0;
-            for (i, c) in arr_content.chars().enumerate() {
-                match c {
-                    '[' => depth += 1,
-                    ']' => {
-                        depth -= 1;
-                        if depth == 0 {
-                            end = i + 1;
-                            break;
-                        }
-                    }
-                    _ => {}
+    // Find the "opportunities" array in the JSON
+    let Some(start) = outline.find("\"opportunities\"") else {
+        return opportunities;
+    };
+    let Some(arr_start) = outline[start..].find('[') else {
+        return opportunities;
+    };
+    let arr_content = &outline[start + arr_start..];
+
+    // Find matching closing bracket
+    let mut depth = 0;
+    let mut end = 0;
+    for (i, c) in arr_content.char_indices() {
+        match c {
+            '[' => depth += 1,
+            ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = i + c.len_utf8();
+                    break;
                 }
             }
-            if end > 0 {
-                let arr_str = &arr_content[..end];
-                // Simple extraction of description fields
-                for line in arr_str.lines() {
-                    let trimmed = line.trim().trim_matches(['"', ',']);
-                    if let Some(desc) = trimmed.strip_prefix("description") {
-                        let desc = desc.trim_start_matches(['"', ':', ' ']);
-                        let desc = desc.trim_end_matches(['"', ',']);
-                        if !desc.is_empty() {
-                            opportunities.push(desc.to_string());
+            _ => {}
+        }
+    }
+    if end == 0 {
+        return opportunities;
+    }
+
+    let arr_str = &arr_content[..end];
+
+    // Parse individual opportunity objects
+    let mut obj_depth = 0;
+    let mut obj_start = None;
+    for (i, c) in arr_str.char_indices() {
+        match c {
+            '{' => {
+                if obj_depth == 0 {
+                    obj_start = Some(i);
+                }
+                obj_depth += 1;
+            }
+            '}' => {
+                obj_depth -= 1;
+                if obj_depth == 0 {
+                    if let Some(start) = obj_start {
+                        let obj = &arr_str[start..i + c.len_utf8()];
+                        if let Some(opp) = parse_opportunity(obj) {
+                            opportunities.push(opp);
                         }
                     }
                 }
             }
+            _ => {}
         }
     }
 
     opportunities
 }
 
+/// Parse a single opportunity JSON object.
+fn parse_opportunity(json: &str) -> Option<VisualizationOpportunity> {
+    fn extract_field(json: &str, field: &str) -> String {
+        let pattern = format!("\"{field}\"");
+        let Some(pos) = json.find(&pattern) else {
+            return String::new();
+        };
+        let after = &json[pos + pattern.len()..];
+        // Skip `: "`
+        let Some(quote_start) = after.find('"') else {
+            return String::new();
+        };
+        let value_start = &after[quote_start + 1..];
+        let mut result = String::new();
+        let mut escaped = false;
+        for c in value_start.chars() {
+            if escaped {
+                result.push(c);
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                break;
+            } else {
+                result.push(c);
+            }
+        }
+        result
+    }
+
+    let slide_title = extract_field(json, "slide_title");
+    let viz_name = extract_field(json, "visualization_name");
+    let description = extract_field(json, "description");
+
+    if description.is_empty() && viz_name.is_empty() {
+        return None;
+    }
+
+    Some(VisualizationOpportunity {
+        slide_title,
+        visualization_name: if viz_name.is_empty() {
+            "Unknown".to_string()
+        } else {
+            viz_name
+        },
+        description,
+        data_description: extract_field(json, "data_description"),
+        suggested_syntax: extract_field(json, "suggested_syntax"),
+        fallback_image_prompt: extract_field(json, "fallback_image_prompt"),
+    })
+}
+
 /// Write visualization opportunities to a file in GitHub-issue-ready format.
-fn write_opportunities(path: &Path, opportunities: &[String]) -> Result<()> {
+fn write_opportunities(path: &Path, opportunities: &[VisualizationOpportunity]) -> Result<()> {
     let mut content = String::from(
-        "# Visualization Opportunities\n\n\
-         The following visualizations were identified as potentially useful for this presentation\n\
-         but are not currently supported by mdeck.\n\n\
-         If you find any of these valuable, consider opening a GitHub issue to request support.\n\n",
+        "# Visualization Opportunities for MDeck\n\n\
+         The following visualizations were identified during AI presentation generation \
+         as potentially valuable additions to mdeck. Each entry is formatted as a \
+         ready-to-submit GitHub issue.\n\n\
+         If you find any of these valuable, please consider opening an issue at:\n\
+         https://github.com/mklab-se/mdeck/issues/new\n\n\
+         ---\n\n",
     );
 
     for (i, opp) in opportunities.iter().enumerate() {
-        content.push_str(&format!("## {}. {}\n\n", i + 1, opp));
-        content.push_str(
-            "**Requested by:** `mdeck ai create` (auto-detected during presentation generation)\n\n",
-        );
+        content.push_str(&format!(
+            "## {}. Feature Request: {} Visualization\n\n",
+            i + 1,
+            opp.visualization_name
+        ));
+
+        content.push_str("### Context\n\n");
+        content.push_str(&format!(
+            "While generating a presentation, MDeck identified that the slide \
+             \"{}\" would benefit from a **{}** visualization. \
+             Currently, mdeck does not support this visualization type, \
+             so an AI-generated image was used as a fallback.\n\n",
+            opp.slide_title, opp.visualization_name
+        ));
+
+        content.push_str("### What This Visualization Shows\n\n");
+        content.push_str(&format!("{}\n\n", opp.description));
+
+        if !opp.data_description.is_empty() {
+            content.push_str("### Data Structure\n\n");
+            content.push_str(&format!(
+                "The visualization would display the following kind of data:\n\n{}\n\n",
+                opp.data_description
+            ));
+        }
+
+        if !opp.suggested_syntax.is_empty() {
+            content.push_str("### Suggested MDeck Syntax\n\n");
+            content.push_str(&format!(
+                "A possible syntax for this visualization in mdeck markdown:\n\n\
+                 ```\n{}\n```\n\n",
+                opp.suggested_syntax
+            ));
+        }
+
+        content.push_str("### Why This Would Be Valuable\n\n");
+        content.push_str(&format!(
+            "This visualization type would help presenters communicate {} more effectively \
+             than bullet points or static images. It was identified by `mdeck ai create` \
+             during automated presentation generation, suggesting it's a common need \
+             when creating presentations from real-world content.\n\n",
+            opp.description.to_lowercase()
+        ));
+
+        if !opp.fallback_image_prompt.is_empty() {
+            content.push_str("### Current Workaround\n\n");
+            content.push_str(&format!(
+                "MDeck currently generates an AI image as a fallback using this prompt:\n\n\
+                 > {}\n\n\
+                 While this produces a reasonable visual, a native interactive visualization \
+                 would be more precise, data-driven, and consistent with mdeck's other \
+                 visualization types.\n\n",
+                opp.fallback_image_prompt
+            ));
+        }
+
+        content.push_str(&format!(
+            "**Source:** Auto-detected by `mdeck ai create`\n\
+             **Slide:** \"{}\"\n\n",
+            opp.slide_title
+        ));
         content.push_str("---\n\n");
     }
-
-    content.push_str(
-        "To request a new visualization type: https://github.com/mklab-se/mdeck/issues/new\n",
-    );
 
     std::fs::write(path, content)
         .with_context(|| format!("Failed to write opportunities: {}", path.display()))?;
@@ -810,14 +1097,32 @@ mod tests {
             "opportunities": [
                 {
                     "slide_title": "Data Flow",
-                    "description": "Swimlane diagram showing cross-team workflow",
-                    "suggested_format": "Horizontal lanes with arrows"
+                    "visualization_name": "Swimlane Diagram",
+                    "description": "Shows cross-team workflow with parallel lanes",
+                    "data_description": "Teams as horizontal lanes with tasks flowing between them",
+                    "suggested_syntax": "```@swimlane\n- Marketing -> Engineering: handoff\n```",
+                    "fallback_image_prompt": "A swimlane diagram showing cross-team workflow with parallel horizontal lanes for Marketing, Engineering, and QA"
                 }
             ]
         }"#;
         let opps = extract_opportunities(outline);
         assert_eq!(opps.len(), 1);
-        assert!(opps[0].contains("Swimlane"));
+        assert_eq!(opps[0].visualization_name, "Swimlane Diagram");
+        assert!(opps[0].description.contains("cross-team"));
+        assert!(!opps[0].fallback_image_prompt.is_empty());
+    }
+
+    #[test]
+    fn test_extract_ready_summary() {
+        let text = "Great! Here's what we'll create:\n\nA presentation about Git Flow for developers.\n\n[READY]";
+        let summary = extract_ready_summary(text).unwrap();
+        assert!(summary.contains("Git Flow"));
+        assert!(!summary.contains("[READY]"));
+    }
+
+    #[test]
+    fn test_extract_ready_summary_none() {
+        assert!(extract_ready_summary("Just chatting, no marker here.").is_none());
     }
 
     // ── DOCX XML parsing tests ──────────────────────────────────────────────
@@ -846,7 +1151,6 @@ mod tests {
 
     #[test]
     fn test_docx_xml_text_with_attributes() {
-        // <w:t xml:space="preserve"> is common in real DOCX files
         let xml = r#"<w:p><w:r><w:t xml:space="preserve">Preserved text</w:t></w:r></w:p>"#;
         let text = extract_text_from_docx_xml(xml);
         assert_eq!(text.trim(), "Preserved text");
@@ -861,13 +1165,9 @@ mod tests {
 
     #[test]
     fn test_docx_xml_table_not_confused_with_text() {
-        // <w:tbl> should not be confused with <w:t>
         let xml = r#"<w:body><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Cell</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body>"#;
         let text = extract_text_from_docx_xml(xml);
-        assert!(
-            text.contains("Cell"),
-            "Text inside table cells should still be extracted"
-        );
+        assert!(text.contains("Cell"));
     }
 
     #[test]
@@ -879,16 +1179,12 @@ mod tests {
 
     #[test]
     fn test_docx_xml_self_closing_text_tag() {
-        // Self-closing <w:t/> should not start text capture
         let xml = r#"<w:p><w:r><w:t/>Outside text</w:r></w:p>"#;
         let text = extract_text_from_docx_xml(xml);
-        assert!(
-            !text.contains("Outside"),
-            "Self-closing <w:t/> should not capture text outside the tag"
-        );
+        assert!(!text.contains("Outside"));
     }
 
-    // ── File extension routing tests ────────────────────────────────────────
+    // ── Input resolution tests ──────────────────────────────────────────────
 
     #[test]
     fn test_resolve_input_literal_text() {
@@ -906,11 +1202,10 @@ mod tests {
 
     #[test]
     fn test_resolve_input_existing_file() {
-        // Use Cargo.toml as a known file that always exists relative to the crate root
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let cargo_toml = format!("{manifest_dir}/Cargo.toml");
         let args = CreateArgs {
-            input: Some(cargo_toml.clone()),
+            input: Some(cargo_toml),
             output: PathBuf::from("out.md"),
             prompt: None,
             interactive: false,
@@ -930,14 +1225,12 @@ mod tests {
             interactive: false,
             style: None,
         };
-        // This should error when stdin is a terminal
         let result = resolve_input(&args, true);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_resolve_input_interactive_with_input_provided() {
-        // When interactive mode is on BUT --input is provided, it should use the input directly
         let args = CreateArgs {
             input: Some("A talk about functional programming".to_string()),
             output: PathBuf::from("out.md"),
@@ -956,11 +1249,8 @@ mod tests {
         assert_eq!(file, PathBuf::from("talk.markdown"));
     }
 
-    // ── Strip markdown fences edge cases ────────────────────────────────────
-
     #[test]
     fn test_strip_fences_generic_wrapper() {
-        // Generic ``` wrapping (common AI output) gets stripped when first line is empty
         let input = "```\nfunction foo() {}\n```";
         let result = strip_markdown_fences(input);
         assert_eq!(result, "function foo() {}");
@@ -968,7 +1258,6 @@ mod tests {
 
     #[test]
     fn test_strip_fences_code_with_language() {
-        // ``` with a language tag that isn't md/markdown should NOT be stripped
         let input = "```rust\nfn main() {}\n```";
         let result = strip_markdown_fences(input);
         assert_eq!(result, input);
@@ -981,29 +1270,56 @@ mod tests {
         assert!(result.starts_with("---"));
     }
 
-    // ── Multiple opportunities extraction ───────────────────────────────────
-
     #[test]
     fn test_extract_opportunities_multiple() {
         let outline = r#"{
             "opportunities": [
                 {
-                    "description": "Swimlane diagram"
+                    "visualization_name": "Swimlane",
+                    "description": "Cross-team flow"
                 },
                 {
-                    "description": "Sankey chart"
+                    "visualization_name": "Sankey",
+                    "description": "Data flow volumes"
                 }
             ]
         }"#;
         let opps = extract_opportunities(outline);
         assert_eq!(opps.len(), 2);
-        assert!(opps[0].contains("Swimlane"));
-        assert!(opps[1].contains("Sankey"));
+        assert_eq!(opps[0].visualization_name, "Swimlane");
+        assert_eq!(opps[1].visualization_name, "Sankey");
     }
 
     #[test]
     fn test_extract_opportunities_no_opportunities_key() {
         let outline = r#"{"slides": [{"title": "Intro"}]}"#;
         assert!(extract_opportunities(outline).is_empty());
+    }
+
+    #[test]
+    fn test_parse_opportunity_full() {
+        let json = r#"{
+            "slide_title": "Flow Diagram",
+            "visualization_name": "Swimlane Diagram",
+            "description": "Shows parallel workflows",
+            "data_description": "Teams and tasks",
+            "suggested_syntax": "@swimlane syntax here",
+            "fallback_image_prompt": "A swimlane diagram with three lanes"
+        }"#;
+        let opp = parse_opportunity(json).unwrap();
+        assert_eq!(opp.slide_title, "Flow Diagram");
+        assert_eq!(opp.visualization_name, "Swimlane Diagram");
+        assert!(!opp.fallback_image_prompt.is_empty());
+    }
+
+    #[test]
+    fn test_build_full_context() {
+        let content = "Some source text about Git.";
+        let summary = "A presentation about Git Flow for developers.";
+        let result = build_full_context(content, summary);
+        assert!(result.contains("PRESENTATION BRIEF:"));
+        assert!(result.contains("Git Flow"));
+        assert!(result.contains("SOURCE MATERIAL"));
+        assert!(result.contains("5 words"));
     }
 }
