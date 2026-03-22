@@ -399,23 +399,51 @@ async fn run_interactive_chat(
     let mut history: Vec<ailloy::Message> =
         vec![ailloy::Message::system(INTERACTIVE_SYSTEM_PROMPT)];
 
-    // Build the opening message with context
+    // Build the opening message — pass the user's actual words to the AI
     let word_count = content.split_whitespace().count();
-    let opening = if let Some(prompt) = initial_prompt {
-        format!(
-            "I want to create a presentation. Here's what I have:\n\n\
-             My description: {prompt}\n\n\
-             Source material: {word_count} words of content provided.\n\n\
-             Start by acknowledging what I've shared and ask me a focused question \
-             to help shape the presentation."
-        )
-    } else {
-        format!(
-            "I want to create a presentation from some content I have \
-             ({word_count} words of source material). \
-             Start by asking me a focused question about who the audience is \
-             and what I want to achieve with this presentation."
-        )
+    let is_short_text = word_count < 200;
+
+    let opening = match (initial_prompt, is_short_text) {
+        (Some(prompt), true) => {
+            // Short text input + explicit prompt: send both directly
+            format!(
+                "I want to create a presentation. Here's what I told you:\n\n\
+                 \"{content}\"\n\n\
+                 Additional context: {prompt}\n\n\
+                 Acknowledge what I've already told you — don't ask me things I already \
+                 answered. Then ask a focused follow-up question about something I \
+                 haven't covered yet."
+            )
+        }
+        (Some(prompt), false) => {
+            // Long content + prompt: summarize content, include prompt
+            format!(
+                "I want to create a presentation. I have {word_count} words of source \
+                 material to work from.\n\n\
+                 My instructions: {prompt}\n\n\
+                 Acknowledge my instructions and ask a focused follow-up question \
+                 about something I haven't covered yet."
+            )
+        }
+        (None, true) => {
+            // Short text input, no prompt: the text IS the user's intent
+            format!(
+                "I want to create a presentation. Here's what I told you:\n\n\
+                 \"{content}\"\n\n\
+                 Acknowledge what I've already told you — don't ask me things I already \
+                 answered. If I mentioned the audience, don't ask who the audience is. \
+                 If I mentioned the goal, don't ask what the goal is. Instead, ask a \
+                 focused follow-up question about something I haven't covered yet."
+            )
+        }
+        (None, false) => {
+            // Long content, no prompt: reference the content
+            format!(
+                "I want to create a presentation from {word_count} words of source \
+                 material I've provided. Ask me a focused question about who the \
+                 audience is and what I want to achieve with this presentation."
+            )
+        }
     };
     history.push(ailloy::Message::user(&opening));
 
