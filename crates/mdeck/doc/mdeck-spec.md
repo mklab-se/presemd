@@ -134,6 +134,34 @@ All three split mechanisms coexist and combine. When multiple overlap, a single 
 - Frontmatter `---` delimiters are never treated as slide separators.
 - `@slide-level` controls heading splits but does not affect `---` or blank-line splits.
 
+### 3.5 Speaker Notes
+
+Speaker notes can be added to any slide using the `???` separator. Everything after `???` until the next slide break is treated as notes — parsed but not rendered in the presentation.
+
+```markdown
+# Key Architecture Decisions
+
+- Microservices over monolith
+- Event-driven communication
++ gRPC for internal APIs
+
+???
+
+This slide sets the stage for the technical deep-dive. Emphasize that
+the microservices decision was driven by **team autonomy**, not scale.
+Ask the audience: "How many of you have migrated from a monolith?"
+
+---
+
+# Next Slide
+```
+
+**Parser rule:** A line whose trimmed content is three or more `?` characters (`???`, `????`, etc.) acts as a notes separator. The `???` line inside a fenced code block is ignored (not treated as a separator).
+
+Notes content supports full markdown formatting (bold, italic, code, links) and is stored as raw text on the slide. Notes are stripped before layout classification, so they do not affect the inferred layout.
+
+**Graceful degradation:** In a standard markdown viewer, `???` renders as visible text, acting as a natural separator between slide content and notes. This keeps notes readable in raw form — important for AI-generated presentations where notes explain slide intent and delivery guidance.
+
 ---
 
 ## 4. Slide Layout Inference

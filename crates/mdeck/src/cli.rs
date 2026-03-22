@@ -130,6 +130,8 @@ pub enum AiCommands {
         #[arg(long)]
         style: Option<String>,
     },
+    /// Create a presentation from content using AI
+    Create(CreateArgs),
     /// Show AI status (same as running `mdeck ai` without a subcommand)
     Status,
     /// AI agent skill information — helps set up Claude Code skills for mdeck
@@ -158,6 +160,29 @@ pub struct GenerateImageArgs {
     /// Generate as icon (square, transparent bg)
     #[arg(long)]
     pub icon: bool,
+}
+
+#[derive(Args)]
+pub struct CreateArgs {
+    /// Input: file path or quoted text (auto-detected). Reads stdin if omitted and stdin is piped.
+    #[arg(long)]
+    pub input: Option<String>,
+
+    /// Output path: .md file or directory (creates presentation.md inside)
+    #[arg(short, long, default_value = "presentation.md")]
+    pub output: PathBuf,
+
+    /// Custom prompt: audience, purpose, tone guidance for the presentation
+    #[arg(long)]
+    pub prompt: Option<String>,
+
+    /// Interactive mode: ask questions before generating
+    #[arg(short, long)]
+    pub interactive: bool,
+
+    /// Image style for AI-generated images
+    #[arg(long)]
+    pub style: Option<String>,
 }
 
 #[derive(Subcommand)]

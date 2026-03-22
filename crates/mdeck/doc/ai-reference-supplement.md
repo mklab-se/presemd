@@ -48,6 +48,18 @@ mdeck ai config                # Interactive AI provider configuration
 mdeck ai test                  # Test AI integration
 ```
 
+### AI Presentation Creation
+
+```bash
+mdeck ai create --input <file-or-text> --output <path>  # Create presentation from content
+mdeck ai create --input report.pdf --output slides.md    # From PDF
+mdeck ai create --input manual.docx --output slides.md   # From DOCX
+mdeck ai create --input "A talk about Rust" --output slides.md  # From text prompt
+cat notes.txt | mdeck ai create --output slides.md       # From piped input
+mdeck ai create -i --input doc.md --output slides.md     # Interactive mode
+mdeck ai create --input doc.md --prompt "For engineers" --output slides.md  # With audience context
+```
+
 ### AI Image Generation
 
 ```bash
@@ -135,3 +147,5 @@ In architecture diagrams, use `icon: generate-image` with a `prompt` to mark a n
 - Use the `---` separator or 3+ blank lines between slides
 - Architecture diagrams with `+`/`*` markers create animated build-up sequences
 - Use `@layout: two-column` with `+++` separator for side-by-side comparisons
+- Add speaker notes after `???` on every slide — explain the slide's intent and delivery guidance
+- Use `mdeck ai create` to generate presentations from any content, then refine with an AI agent

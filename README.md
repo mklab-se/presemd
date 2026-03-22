@@ -31,6 +31,7 @@ MDeck creates stunning presentations from standard markdown files. No proprietar
 
 - **Any `.md` file is instantly presentable** — intelligent layout inference picks the right slide design from your content structure: title slides, bullet lists, code blocks, quotes, images, tables, and more
 - **Built-in visualizations** — architecture diagrams, Gantt charts, word clouds, bar/line/pie charts, KPI dashboards, org charts, timelines, radar charts, scatter plots, Venn diagrams, and more — all from simple text in your markdown
+- **AI-powered presentation creation** — turn any content into a polished presentation with `mdeck ai create`. Feed it a PDF, DOCX, markdown file, or just a text prompt — MDeck analyzes the content, identifies key points, and generates a complete presentation with speaker notes, visualizations, and image placeholders. Your source material becomes a compelling talk in seconds
 - **AI-native** — since presentations are just markdown, any AI can help you write them. But MDeck also has AI built directly in: generate images and icons in your chosen style, right from the command line. Your slides, your aesthetic
 - **Built in Rust** — fast, lightweight, GPU-accelerated rendering with smooth transitions and animations
 
@@ -199,6 +200,24 @@ Set globally in frontmatter or per-slide:
 ---
 ```
 
+### Speaker Notes
+
+Add presenter-only notes to any slide with the `???` separator:
+
+```markdown
+# Key Decision
+
+- We chose microservices for team autonomy
+- Event-driven for loose coupling
+
+???
+
+Emphasize that this wasn't about scale — it was about letting teams
+ship independently. Ask: "How many of you have migrated from a monolith?"
+```
+
+Notes are parsed but never shown in the presentation — they're designed to help the presenter understand each slide's intent and deliver it effectively. When MDeck generates presentations with AI, every slide includes detailed speaker notes explaining what to say and how to present it.
+
 ### Transitions
 
 Smooth animated transitions between slides: **fade**, **slide**, **spatial**, and **none**. Cycle with `T` during presentation.
@@ -217,7 +236,40 @@ Smart heading inference: if your file has one `#` title and uses `##` for sectio
 
 ## AI Features
 
-MDeck integrates AI for image and icon generation. Configure with `mdeck ai enable`.
+MDeck integrates AI for intelligent presentation creation and image generation. Configure with `mdeck ai enable`.
+
+### Create Presentations from Anything
+
+Turn any content into a polished presentation — text prompts, documents, PDFs, DOCX files, or piped input:
+
+```bash
+# From a text prompt
+mdeck ai create --input "A presentation about Git Flow for software teams" --output git-flow/
+
+# From a PDF report
+mdeck ai create --input company-report.pdf --output company-report.md
+
+# From a Word document
+mdeck ai create --input camera-manual.docx --output camera-manual.md
+
+# From piped input
+cat research-notes.txt | mdeck ai create --output research.md
+
+# Interactive mode — MDeck asks about audience, purpose, and key points
+mdeck ai create -i --input environment-report.md --output presentation/
+
+# With audience/purpose context
+mdeck ai create --input a-book-on-hobbits.md --output hobbits.md \
+  --prompt "For 10-year-old children, focusing on the adventures"
+```
+
+MDeck doesn't just dump content onto slides — it **analyzes** your source material, identifies key points, and creates a concise, engaging presentation designed to support a presenter. Each slide includes detailed speaker notes explaining the intent and suggested delivery approach. The source material serves as the detailed handout; the presentation tells the story.
+
+The generation pipeline:
+1. **Extract** — reads text from any supported format (PDF, DOCX, markdown, plain text)
+2. **Analyze** — AI identifies key points, structure, and visualization opportunities
+3. **Generate** — creates complete mdeck-format slides with speaker notes, visualizations, and image placeholders
+4. **Post-process** — validates the output and identifies opportunities for MDeck visualizations
 
 ### Generate Images for a Presentation
 
@@ -301,6 +353,9 @@ mdeck ai enable              # Enable AI features
 mdeck ai disable             # Disable AI features
 mdeck ai test                # Test AI integration
 mdeck ai config              # Open AI config in editor
+mdeck ai create              # Create a presentation from content using AI
+mdeck ai create --input X    # Create from file or text prompt
+mdeck ai create -i           # Interactive mode (asks questions first)
 mdeck ai generate <file.md>  # Generate all AI images in a presentation
 mdeck ai generate-image      # Generate a single image from a prompt
 mdeck ai style list          # List defined image styles

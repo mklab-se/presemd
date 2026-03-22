@@ -2462,6 +2462,7 @@ mod tests {
             blocks: vec![],
             layout: Layout::Content,
             raw_source: raw.to_string(),
+            notes: None,
         }
     }
 

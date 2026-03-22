@@ -34,6 +34,8 @@ notify-debouncer-mini.workspace = true
 ailloy.workspace = true
 futures.workspace = true
 tokio.workspace = true
+pdf-extract.workspace = true
+zip.workspace = true
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/mdeck-v{ version }-{ target }.{ archive-format }"

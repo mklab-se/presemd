@@ -62,6 +62,11 @@ MOUSE CONTROLS
 COLUMN SEPARATOR
   +++   Separates left and right columns in two-column layout
 
+SPEAKER NOTES
+  ???   Notes separator (3+ question marks)
+        Everything after ??? is presenter-only notes (not rendered)
+        Supports full markdown formatting in notes content
+
 VISUALIZATIONS (fenced code blocks with @ language tag)
   @barchart      Bar chart (vertical/horizontal, # orientation:, # x-label:, # y-label:)
   @linechart     Line chart (# x-labels:, # x-label:, # y-label:, multiple series)

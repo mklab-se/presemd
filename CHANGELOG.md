@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.14.0] - 2026-03-22
+
+### Added
+
+- **AI presentation creation** (`mdeck ai create`) — create complete presentations from any content source. Supports text prompts, PDF files, DOCX files, markdown, plain text, and piped stdin input. AI analyzes the content, identifies key points, and generates a structured presentation with speaker notes, visualizations, and image generation markers. Includes interactive mode (`-i`) for guided creation with audience/purpose context, and custom prompt support (`--prompt`) for tailored presentations.
+- **Speaker notes** (`???` separator) — add presenter-only notes to any slide. Notes are parsed and stored but never rendered in the presentation. Supports full markdown formatting. Designed to help presenters understand slide intent, especially valuable in AI-generated presentations where notes explain delivery guidance and talking points.
+
+### Changed
+
+- Upgraded ailloy dependency from 0.5 to 0.6.
+
+### Dependencies
+
+- Added `pdf-extract` for PDF text extraction.
+- Added `zip` for DOCX text extraction.
+
 ## [0.13.0] - 2026-03-20
 
 ### Added

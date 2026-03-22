@@ -43,6 +43,7 @@ crates/
       commands/
         mod.rs       # Re-exports
         ai.rs        # AI provider init/status/remove/style management
+        create.rs    # AI presentation creation from any content (mdeck ai create)
         generate.rs  # AI image generation for presentations (mdeck ai generate)
         completion.rs # Shell completion generation
         config.rs    # Config show/set
@@ -78,6 +79,9 @@ mdeck ai test                # Test AI integration
 mdeck ai enable              # Enable AI features
 mdeck ai disable             # Disable AI features
 mdeck ai config              # Open AI config in editor
+mdeck ai create --input <file-or-text> --output <path>  # Create presentation from content
+mdeck ai create -i           # Interactive presentation creation
+mdeck ai create --prompt "..." # With audience/purpose context
 mdeck ai generate <file.md>  # Generate all AI images in a presentation
 mdeck ai generate-image --prompt "..." [--icon] [--output path] [--style name]
 mdeck ai style add <name> <desc> [--icon]  # Add named style
@@ -192,6 +196,8 @@ Before every release, verify these are up to date:
     - `gallery.md` — gallery layout (2/3/4 images)
     - `layouts.md` — mixed layout test
   - **`samples/transitions/`** — per-transition test files: `fade.md`, `slide.md`, `spatial.md`, `none.md`
+  - **`samples/features/`** — feature-specific test files:
+    - `notes.md` — speaker notes with `???` separator
   - **Top-level `samples/`** — showcase presentations: `gallery.md`, `introducing-mdeck.md`, `poker-night.md`, `saloon-workshop.md`, `continents.md`
   When working on a specific visualization type, use its dedicated test file for faster iteration.
 - When fixing visual issues, export before and after to confirm the fix.
