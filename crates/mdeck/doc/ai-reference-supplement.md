@@ -146,6 +146,7 @@ In architecture diagrams, use `icon: generate-image` with a `prompt` to mark a n
 - Keep slide content concise — presentations are meant to be visual aids, not documents
 - Use the `---` separator or 3+ blank lines between slides
 - Architecture diagrams with `+`/`*` markers create animated build-up sequences
+- Use `@gitgraph` for git branching diagrams — branches, commits, merges with progressive reveal
 - Use `@layout: two-column` with `+++` separator for side-by-side comparisons
 - Add speaker notes after `???` on every slide — explain the slide's intent and delivery guidance
 - Use `mdeck ai create` to generate presentations from any content, then refine with an AI agent
