@@ -1096,19 +1096,36 @@ fn parse_opportunity(json: &str) -> Option<VisualizationOpportunity> {
 }
 
 /// Write visualization opportunities to a file in GitHub-issue-ready format.
+/// If the file already exists, appends only new opportunities (by name) to avoid duplicates.
 fn write_opportunities(path: &Path, opportunities: &[VisualizationOpportunity]) -> Result<()> {
-    let mut content = String::from(
-        "# Visualization Opportunities for MDeck\n\n\
+    let header = "# Visualization Opportunities for MDeck\n\n\
          Each section below is a self-contained feature request ready to be submitted \
          as a GitHub issue. Copy the section you're interested in and paste it at:\n\
-         https://github.com/mklab-se/mdeck/issues/new\n\n",
-    );
+         https://github.com/mklab-se/mdeck/issues/new\n\n";
 
-    for (i, opp) in opportunities.iter().enumerate() {
+    // Read existing file to find already-listed opportunities and the next number
+    let (mut content, mut next_number) = if path.exists() {
+        let existing = std::fs::read_to_string(path).unwrap_or_default();
+        // Count existing entries to continue numbering
+        let count = existing.matches("## ").count();
+        (existing, count + 1)
+    } else {
+        (header.to_string(), 1)
+    };
+
+    // Collect existing visualization names (lowercase, no spaces) to deduplicate
+    let existing_lower = content.to_lowercase();
+
+    let mut added = 0;
+    for opp in opportunities {
+        let tag = opp.visualization_name.to_lowercase().replace(' ', "");
+        // Skip if this visualization type is already in the file
+        if existing_lower.contains(&format!("`@{tag}`")) {
+            continue;
+        }
+
         content.push_str(&format!(
-            "---\n\n## {}. Feature Request: `@{}` Visualization\n\n",
-            i + 1,
-            opp.visualization_name.to_lowercase().replace(' ', "")
+            "---\n\n## {next_number}. Feature Request: `@{tag}` Visualization\n\n"
         ));
 
         content.push_str("### Summary\n\n");
@@ -1132,10 +1149,7 @@ fn write_opportunities(path: &Path, opportunities: &[VisualizationOpportunity]) 
 
         if !opp.suggested_syntax.is_empty() {
             content.push_str("### Proposed Syntax\n\n````markdown\n");
-            content.push_str(&format!(
-                "```@{}\n",
-                opp.visualization_name.to_lowercase().replace(' ', "")
-            ));
+            content.push_str(&format!("```@{tag}\n"));
             content.push_str(&opp.suggested_syntax);
             content.push_str("\n```\n````\n\n");
         }
@@ -1149,10 +1163,15 @@ fn write_opportunities(path: &Path, opportunities: &[VisualizationOpportunity]) 
              creates a corresponding `Block` variant. Progressive reveal is supported \
              via `+` and `*` list markers.\n\n",
         );
+
+        next_number += 1;
+        added += 1;
     }
 
-    std::fs::write(path, content)
-        .with_context(|| format!("Failed to write opportunities: {}", path.display()))?;
+    if added > 0 {
+        std::fs::write(path, content)
+            .with_context(|| format!("Failed to write opportunities: {}", path.display()))?;
+    }
 
     Ok(())
 }
