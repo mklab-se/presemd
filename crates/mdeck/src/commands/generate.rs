@@ -30,8 +30,6 @@ struct ImageMarker {
 
 /// Result of a single image generation task.
 struct GenerationResult {
-    /// Task index (for display ordering).
-    index: usize,
     /// The prompt text used.
     prompt_text: String,
     /// 0-indexed line number in the raw file.
@@ -184,7 +182,7 @@ pub async fn run(
 
     let mut all_futures: Vec<Pin<Box<dyn Future<Output = GenerationResult> + '_>>> = Vec::new();
 
-    for (i, marker) in image_markers.iter().enumerate() {
+    for marker in &image_markers {
         let combined =
             prompt::build_image_prompt(&image_style, &marker.alt_text, marker.orientation);
         let client = &client;
@@ -194,7 +192,6 @@ pub async fn run(
         all_futures.push(Box::pin(async move {
             let result = client.generate_image(&combined).await;
             GenerationResult {
-                index: i,
                 prompt_text: alt,
                 line_index,
                 old_line,
@@ -204,8 +201,7 @@ pub async fn run(
         }));
     }
 
-    let image_count = image_markers.len();
-    for (i, marker) in icon_markers.iter().enumerate() {
+    for marker in &icon_markers {
         let combined = prompt::build_icon_prompt(&icon_style, &marker.prompt_text);
         let client = &client;
         let prompt_text = marker.prompt_text.clone();
@@ -214,7 +210,6 @@ pub async fn run(
         all_futures.push(Box::pin(async move {
             let result = client.generate_image(&combined).await;
             GenerationResult {
-                index: image_count + i,
                 prompt_text,
                 line_index,
                 old_line,
@@ -224,15 +219,15 @@ pub async fn run(
         }));
     }
 
-    println!(
-        "  Generating {} image(s) with up to {} concurrent requests...\n",
-        total, MAX_CONCURRENT
-    );
+    if !quiet {
+        println!("  Generating {} image(s)...\n", total,);
+    }
 
     let mut buffered = futures::stream::iter(all_futures).buffer_unordered(MAX_CONCURRENT);
+    let mut completed = 0usize;
 
     while let Some(res) = buffered.next().await {
-        let idx = res.index + 1;
+        completed += 1;
         let kind = if res.is_icon { "icon " } else { "" };
         let prompt_preview = truncate(&res.prompt_text, 50);
 
@@ -248,15 +243,17 @@ pub async fn run(
                 let filepath = dir.join(&filename);
                 std::fs::write(&filepath, &response.data)?;
 
-                println!(
-                    "  [{}/{}] {}{} {}",
-                    idx,
-                    total,
-                    kind,
-                    prompt_preview,
-                    "✓".green().bold()
-                );
-                ai::display_image_result(&filepath);
+                if !quiet {
+                    println!(
+                        "  [{}/{}] {}{} {}",
+                        completed,
+                        total,
+                        kind,
+                        prompt_preview,
+                        "✓".green().bold()
+                    );
+                    ai::display_image_result(&filepath);
+                }
 
                 // Record replacement
                 if res.is_icon {
@@ -276,7 +273,7 @@ pub async fn run(
             Err(e) => {
                 println!(
                     "  [{}/{}] {}{} {}",
-                    idx,
+                    completed,
                     total,
                     kind,
                     prompt_preview,
@@ -308,24 +305,26 @@ pub async fn run(
         std::fs::write(&file, new_content)?;
     }
 
-    println!();
-    if success_count == total {
-        println!(
-            "{} Generated {}/{} images successfully.",
-            "✓".green().bold(),
-            success_count,
-            total
-        );
-    } else {
-        println!(
-            "{} Generated {}/{} images ({} failed).",
-            "!".yellow().bold(),
-            success_count,
-            total,
-            total - success_count
-        );
+    if !quiet {
+        println!();
+        if success_count == total {
+            println!(
+                "{} Generated {}/{} images successfully.",
+                "✓".green().bold(),
+                success_count,
+                total
+            );
+        } else {
+            println!(
+                "{} Generated {}/{} images ({} failed).",
+                "!".yellow().bold(),
+                success_count,
+                total,
+                total - success_count
+            );
+        }
     }
-    if success_count > 0 {
+    if success_count > 0 && !quiet {
         println!("Updated: {}", file.display());
     }
 

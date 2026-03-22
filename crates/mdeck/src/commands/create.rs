@@ -64,10 +64,8 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
 
     // Step 3: Determine output filename
     let output_file = if args.output == Path::new("presentation.md") && !quiet {
-        // Default output — ask AI for a good name
         let suggested = suggest_filename(&client, &context).await?;
         let (file, _) = resolve_output(Path::new(&suggested))?;
-        eprintln!("  {} {}", "Output:".bold(), file.display());
         file
     } else {
         let (file, _) = resolve_output(&args.output)?;
@@ -79,15 +77,31 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
         .unwrap_or(Path::new("."))
         .to_path_buf();
 
-    // Step 4: Generate the presentation (analysis + slide generation in one pipeline)
+    // Step 4: Confirmation — show what will be created and ask for approval
     if !quiet {
+        eprintln!();
+        eprintln!("{}", "  Ready to generate:".bold());
+        eprintln!("    {} {}", "File:".bold(), output_file.display());
         eprintln!();
     }
 
+    if args.interactive {
+        eprint!("{} Proceed with generation? [Y/n] ", "?".green().bold());
+        io::stderr().flush()?;
+        let mut confirm = String::new();
+        io::stdin().read_line(&mut confirm)?;
+        let confirm = confirm.trim().to_lowercase();
+        if confirm == "n" || confirm == "no" {
+            eprintln!("{} Cancelled.", "!".yellow().bold());
+            return Ok(());
+        }
+    }
+
+    // Step 5: Generate the presentation
     let (presentation_md, opportunities) =
         run_pipeline(&client, &content, &context, &args.style, quiet).await?;
 
-    // Step 5: Write output
+    // Step 6: Write output
     std::fs::create_dir_all(&output_dir).with_context(|| {
         format!(
             "Failed to create output directory: {}",
@@ -106,7 +120,7 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
         );
     }
 
-    // Step 6: Handle visualization opportunities
+    // Step 7: Handle visualization opportunities
     if !opportunities.is_empty() {
         let opp_file = output_dir.join("visualization-opportunities.md");
         write_opportunities(&opp_file, &opportunities)?;
@@ -129,21 +143,23 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
         }
     }
 
-    // Step 7: Check for image generation markers
+    // Step 8: Auto-generate images if image capability is available
     let image_count = presentation_md.matches("(image-generation)").count();
-    if image_count > 0 && !quiet {
+    if image_count > 0 {
         if ai::has_capability("image") {
-            eprintln!(
-                "  {} {} image{} marked for AI generation.",
-                "ℹ".blue().bold(),
-                image_count,
-                if image_count == 1 { "" } else { "s" }
-            );
-            eprintln!(
-                "    Run: {} to generate them.",
-                format!("mdeck ai generate {}", output_file.display()).cyan()
-            );
-        } else {
+            if !quiet {
+                eprintln!();
+                eprintln!(
+                    "  {} Generating {} image{}...",
+                    "ℹ".blue().bold(),
+                    image_count,
+                    if image_count == 1 { "" } else { "s" }
+                );
+            }
+            // Run the existing generate command on the output file
+            crate::commands::generate::run(output_file.clone(), true, args.style.clone(), quiet)
+                .await?;
+        } else if !quiet {
             eprintln!(
                 "  {} {} image{} marked but no image provider configured.",
                 "ℹ".blue().bold(),
@@ -607,9 +623,18 @@ RULES:
 - The presentation should support a PRESENTER — keep slides focused and visual.
 - Each slide covers ONE key point or a small group of closely related points.
 - Never overload a slide with information. Less is more.
-- Identify where visualizations would enhance understanding.
-- When a visualization would be ideal but mdeck doesn't support it, STILL mark it \
-  and describe the ideal visualization in detail — mdeck will generate an image instead.
+- ACTIVELY look for visualization opportunities. Many concepts are better shown \
+  visually than described in bullet points. Think about: flows, processes, hierarchies, \
+  comparisons, timelines, branching structures, data relationships, before/after states.
+- When a visualization would be ideal but mdeck doesn't support it, you MUST add it \
+  to the opportunities array with a detailed description. This is critical — these \
+  opportunities help improve mdeck over time. Be specific about what the visualization \
+  would show, how it would be structured, and why a static image is not a good substitute \
+  (e.g., branch diagrams need precision that generated images cannot provide).
+- For concepts that require PRECISION in their visual representation (e.g., Git branch \
+  histories, flowcharts with exact paths, state machines), always flag them as opportunities \
+  even if an image fallback is provided. A generated image approximates but cannot replace \
+  a precise, data-driven visualization.
 
 Respond in JSON:
 ```json
@@ -967,11 +992,14 @@ fn write_opportunities(path: &Path, opportunities: &[VisualizationOpportunity]) 
 
         content.push_str("### Context\n\n");
         content.push_str(&format!(
-            "While generating a presentation, MDeck identified that the slide \
-             \"{}\" would benefit from a **{}** visualization. \
-             Currently, mdeck does not support this visualization type, \
-             so an AI-generated image was used as a fallback.\n\n",
-            opp.slide_title, opp.visualization_name
+            "MDeck is a markdown-based presentation tool that supports built-in \
+             visualizations (bar charts, timelines, architecture diagrams, etc.) \
+             rendered directly from text in fenced code blocks. During AI-powered \
+             presentation generation, a need was identified for a **{}** visualization \
+             that mdeck does not currently support. An AI-generated image was used \
+             as a fallback, but a native visualization would provide better precision, \
+             interactivity, and consistency with mdeck's other visualization types.\n\n",
+            opp.visualization_name
         ));
 
         content.push_str("### What This Visualization Shows\n\n");
@@ -1015,11 +1043,6 @@ fn write_opportunities(path: &Path, opportunities: &[VisualizationOpportunity]) 
             ));
         }
 
-        content.push_str(&format!(
-            "**Source:** Auto-detected by `mdeck ai create`\n\
-             **Slide:** \"{}\"\n\n",
-            opp.slide_title
-        ));
         content.push_str("---\n\n");
     }
 
