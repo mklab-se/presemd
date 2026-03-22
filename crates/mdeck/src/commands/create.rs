@@ -121,30 +121,7 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
         );
     }
 
-    // Step 7: Handle visualization opportunities
-    if !opportunities.is_empty() {
-        let opp_file = output_dir.join("visualization-opportunities.md");
-        write_opportunities(&opp_file, &opportunities)?;
-        if !quiet {
-            eprintln!(
-                "  {} Found {} visualization {} not yet supported by mdeck.",
-                "ℹ".blue().bold(),
-                opportunities.len(),
-                if opportunities.len() == 1 {
-                    "opportunity"
-                } else {
-                    "opportunities"
-                }
-            );
-            eprintln!("    See: {}", opp_file.display());
-            eprintln!(
-                "    Consider sharing as an issue: {}",
-                "https://github.com/mklab-se/mdeck/issues/new".cyan()
-            );
-        }
-    }
-
-    // Step 8: Auto-generate images if image capability is available
+    // Step 7: Auto-generate images if image capability is available
     let image_count = presentation_md.matches("(image-generation)").count();
     if image_count > 0 {
         if ai::has_capability("image") {
@@ -157,9 +134,17 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
                     if image_count == 1 { "" } else { "s" }
                 );
             }
-            // Run the existing generate command on the output file
-            crate::commands::generate::run(output_file.clone(), true, args.style.clone(), quiet)
+            // Run generate with quiet=true to suppress inline image display in terminal
+            crate::commands::generate::run(output_file.clone(), true, args.style.clone(), true)
                 .await?;
+            if !quiet {
+                eprintln!(
+                    "  {} {} image{} generated.",
+                    "✓".green().bold(),
+                    image_count,
+                    if image_count == 1 { "" } else { "s" }
+                );
+            }
         } else if !quiet {
             eprintln!(
                 "  {} {} image{} marked but no image provider configured.",
@@ -180,6 +165,30 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
         eprintln!(
             "  Launch: {}",
             format!("mdeck {}", output_file.display()).cyan()
+        );
+    }
+
+    // Step 8: Visualization opportunities — shown last as a warning
+    if !opportunities.is_empty() && !quiet {
+        let opp_file = output_dir.join("visualization-opportunities.md");
+        write_opportunities(&opp_file, &opportunities)?;
+        eprintln!();
+        eprintln!(
+            "  {} This presentation could be even better. MDeck identified {} \
+             visualization{} that {} not yet supported but would enhance the slides.",
+            "!".yellow().bold(),
+            opportunities.len(),
+            if opportunities.len() == 1 { "" } else { "s" },
+            if opportunities.len() == 1 {
+                "is"
+            } else {
+                "are"
+            }
+        );
+        eprintln!("    Details: {}", opp_file.display());
+        eprintln!(
+            "    Help improve MDeck: {}",
+            "https://github.com/mklab-se/mdeck/issues/new".cyan()
         );
     }
 
@@ -726,7 +735,7 @@ async fn run_pipeline(
         None
     };
 
-    let presentation_md = run_generation(client, &outline, context, style, &opportunities).await?;
+    let presentation_md = run_generation(client, &outline, context, style).await?;
 
     if let Some(s) = spinner {
         s.stop_with(&format!("{} Presentation generated.", "✓".green().bold()));
@@ -793,8 +802,11 @@ Supported mdeck visualizations:
 - radar, venn (comparison)
 - wordcloud (text analysis)
 
-If a visualization would be useful but is NOT in the list above, add it to `opportunities` \
-AND set `layout_hint` to `image` for that slide so mdeck generates an image as fallback.
+If a visualization would be useful but is NOT in the list above, add it to `opportunities`. \
+Do NOT set layout_hint to `image` as a fallback for precision visualizations — AI-generated \
+images are unpredictable and often contain errors, making them unsuitable for diagrams, \
+flowcharts, branch histories, or anything where accuracy matters. Only use `image` layout \
+for decorative or mood-setting visuals that don't need to be precise.
 
 8-20 slides for most content. Start with title slide, end with summary/conclusion.";
 
@@ -834,7 +846,6 @@ async fn run_generation(
     outline: &str,
     context: &str,
     style: &Option<String>,
-    opportunities: &[VisualizationOpportunity],
 ) -> Result<String> {
     let image_style_hint = if let Some(s) = style {
         format!("\n- Use image style: \"{s}\" for all AI-generated images.")
@@ -842,23 +853,9 @@ async fn run_generation(
         String::new()
     };
 
-    // Build fallback image instructions for missing visualizations
-    let fallback_instructions = if !opportunities.is_empty() {
-        let mut s = String::from(
-            "\n- For slides where the ideal visualization is not supported by mdeck, \
-             use `![descriptive prompt](image-generation)` to generate an image instead. \
-             Here are the specific fallback prompts to use:\n",
-        );
-        for opp in opportunities {
-            s.push_str(&format!(
-                "  - Slide \"{}\": ![{}](image-generation)\n",
-                opp.slide_title, opp.fallback_image_prompt
-            ));
-        }
-        s
-    } else {
-        String::new()
-    };
+    // No fallback images for missing visualizations — precision diagrams
+    // must not use AI-generated images as they're unreliable
+    let fallback_instructions = String::new();
 
     let system_prompt = format!(
         "You are a presentation content generator for mdeck. \
@@ -878,12 +875,14 @@ async fn run_generation(
           • Transition to the next slide\n\
         - Use progressive reveal (`+` markers) for bullet lists where it helps pacing.\n\
         - Use visualization code blocks where the outline specifies them.\n\
-        - For slides where no suitable built-in visualization exists, use \
-          `![descriptive prompt](image-generation)` to generate an image.\n\
-        - Use `![descriptive prompt](image-generation)` for images that genuinely enhance \
-          understanding — diagrams, illustrations of concepts, or visuals that make a point \
-          more compelling. Do NOT add images just for decoration. Every image should earn its \
-          place by making the slide more effective.\n\
+        - ONLY use `![descriptive prompt](image-generation)` for decorative or mood-setting \
+          images that lighten up the presentation — NOT for diagrams, flowcharts, processes, \
+          or anything that requires precision. AI-generated images are unpredictable and often \
+          contain errors, so they must never be used where accuracy matters. If a slide needs \
+          a precise visualization that mdeck doesn't support, use bullet points or text \
+          instead — the presenter can draw on a whiteboard if needed.\n\
+        - Do NOT add images just because you can. Only include them when they genuinely \
+          enhance the presentation's atmosphere or help set the mood for a section.\n\
         - Keep slide text concise — the presentation supports the presenter.\n\
         - Use **bold** and *italic* for emphasis.\n\
         - Output ONLY the markdown content.{image_style_hint}{fallback_instructions}"
@@ -969,6 +968,7 @@ fn resolve_output(output: &Path) -> Result<(PathBuf, PathBuf)> {
 /// A structured visualization opportunity extracted from the AI outline.
 #[derive(Debug, Clone)]
 struct VisualizationOpportunity {
+    #[allow(dead_code)]
     slide_title: String,
     visualization_name: String,
     description: String,
