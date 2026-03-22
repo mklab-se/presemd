@@ -783,12 +783,12 @@ Respond in JSON:
   ],
   \"opportunities\": [
     {
-      \"slide_title\": \"Which slide this applies to\",
-      \"visualization_name\": \"Short name (e.g. Swimlane Diagram)\",
-      \"description\": \"What this visualization shows and why it would help\",
-      \"data_description\": \"What data or structure it would display\",
-      \"suggested_syntax\": \"Proposed mdeck syntax for this visualization type\",
-      \"fallback_image_prompt\": \"A detailed prompt to generate an image that approximates this visualization\"
+      \"visualization_name\": \"Short descriptive name (e.g. Git Branch Diagram)\",
+      \"description\": \"2-3 sentences: what this visualization shows, why it matters, and why bullet points or AI-generated images are not adequate substitutes\",
+      \"data_description\": \"Detailed description of the data model: what entities exist, their relationships, how they map to visual elements (nodes, edges, lanes, axes, etc.)\",
+      \"rendering_description\": \"How the visualization should look when rendered: layout direction, positioning, colors, labels, what gets drawn and where. Be specific enough that an implementer can sketch a mockup.\",
+      \"suggested_syntax\": \"Complete multi-line mdeck syntax example showing a realistic use case with 3-5 data points. Use the @tag fenced code block pattern consistent with mdeck's existing visualizations.\",
+      \"ascii_mockup\": \"A simple ASCII art sketch of what the rendered visualization would look like\"
     }
   ]
 }
@@ -803,6 +803,10 @@ Supported mdeck visualizations:
 - wordcloud (text analysis)
 
 If a visualization would be useful but is NOT in the list above, add it to `opportunities`. \
+DEDUPLICATE: if multiple slides would benefit from the same visualization type, create \
+only ONE opportunity entry that covers all use cases — don't repeat the same visualization \
+for every slide that needs it.
+
 Do NOT set layout_hint to `image` as a fallback for precision visualizations — AI-generated \
 images are unpredictable and often contain errors, making them unsuitable for diagrams, \
 flowcharts, branch histories, or anything where accuracy matters. Only use `image` layout \
@@ -968,13 +972,12 @@ fn resolve_output(output: &Path) -> Result<(PathBuf, PathBuf)> {
 /// A structured visualization opportunity extracted from the AI outline.
 #[derive(Debug, Clone)]
 struct VisualizationOpportunity {
-    #[allow(dead_code)]
-    slide_title: String,
     visualization_name: String,
     description: String,
     data_description: String,
+    rendering_description: String,
     suggested_syntax: String,
-    fallback_image_prompt: String,
+    ascii_mockup: String,
 }
 
 /// Extract visualization opportunities from the AI outline JSON.
@@ -1071,7 +1074,6 @@ fn parse_opportunity(json: &str) -> Option<VisualizationOpportunity> {
         result
     }
 
-    let slide_title = extract_field(json, "slide_title");
     let viz_name = extract_field(json, "visualization_name");
     let description = extract_field(json, "description");
 
@@ -1080,7 +1082,6 @@ fn parse_opportunity(json: &str) -> Option<VisualizationOpportunity> {
     }
 
     Some(VisualizationOpportunity {
-        slide_title,
         visualization_name: if viz_name.is_empty() {
             "Unknown".to_string()
         } else {
@@ -1088,8 +1089,9 @@ fn parse_opportunity(json: &str) -> Option<VisualizationOpportunity> {
         },
         description,
         data_description: extract_field(json, "data_description"),
+        rendering_description: extract_field(json, "rendering_description"),
         suggested_syntax: extract_field(json, "suggested_syntax"),
-        fallback_image_prompt: extract_field(json, "fallback_image_prompt"),
+        ascii_mockup: extract_field(json, "ascii_mockup"),
     })
 }
 
@@ -1097,75 +1099,56 @@ fn parse_opportunity(json: &str) -> Option<VisualizationOpportunity> {
 fn write_opportunities(path: &Path, opportunities: &[VisualizationOpportunity]) -> Result<()> {
     let mut content = String::from(
         "# Visualization Opportunities for MDeck\n\n\
-         The following visualizations were identified during AI presentation generation \
-         as potentially valuable additions to mdeck. Each entry is formatted as a \
-         ready-to-submit GitHub issue.\n\n\
-         If you find any of these valuable, please consider opening an issue at:\n\
-         https://github.com/mklab-se/mdeck/issues/new\n\n\
-         ---\n\n",
+         Each section below is a self-contained feature request ready to be submitted \
+         as a GitHub issue. Copy the section you're interested in and paste it at:\n\
+         https://github.com/mklab-se/mdeck/issues/new\n\n",
     );
 
     for (i, opp) in opportunities.iter().enumerate() {
         content.push_str(&format!(
-            "## {}. Feature Request: {} Visualization\n\n",
+            "---\n\n## {}. Feature Request: `@{}` Visualization\n\n",
             i + 1,
-            opp.visualization_name
+            opp.visualization_name.to_lowercase().replace(' ', "")
         ));
 
-        content.push_str("### Context\n\n");
-        content.push_str(&format!(
-            "MDeck is a markdown-based presentation tool that supports built-in \
-             visualizations (bar charts, timelines, architecture diagrams, etc.) \
-             rendered directly from text in fenced code blocks. During AI-powered \
-             presentation generation, a need was identified for a **{}** visualization \
-             that mdeck does not currently support. An AI-generated image was used \
-             as a fallback, but a native visualization would provide better precision, \
-             interactivity, and consistency with mdeck's other visualization types.\n\n",
-            opp.visualization_name
-        ));
-
-        content.push_str("### What This Visualization Shows\n\n");
+        content.push_str("### Summary\n\n");
         content.push_str(&format!("{}\n\n", opp.description));
 
         if !opp.data_description.is_empty() {
-            content.push_str("### Data Structure\n\n");
-            content.push_str(&format!(
-                "The visualization would display the following kind of data:\n\n{}\n\n",
-                opp.data_description
-            ));
+            content.push_str("### Data Model\n\n");
+            content.push_str(&format!("{}\n\n", opp.data_description));
+        }
+
+        if !opp.rendering_description.is_empty() {
+            content.push_str("### Rendering Specification\n\n");
+            content.push_str(&format!("{}\n\n", opp.rendering_description));
+        }
+
+        if !opp.ascii_mockup.is_empty() {
+            content.push_str("### Visual Mockup\n\n```\n");
+            content.push_str(&opp.ascii_mockup);
+            content.push_str("\n```\n\n");
         }
 
         if !opp.suggested_syntax.is_empty() {
-            content.push_str("### Suggested MDeck Syntax\n\n");
+            content.push_str("### Proposed Syntax\n\n````markdown\n");
             content.push_str(&format!(
-                "A possible syntax for this visualization in mdeck markdown:\n\n\
-                 ```\n{}\n```\n\n",
-                opp.suggested_syntax
+                "```@{}\n",
+                opp.visualization_name.to_lowercase().replace(' ', "")
             ));
+            content.push_str(&opp.suggested_syntax);
+            content.push_str("\n```\n````\n\n");
         }
 
-        content.push_str("### Why This Would Be Valuable\n\n");
-        content.push_str(&format!(
-            "This visualization type would help presenters communicate {} more effectively \
-             than bullet points or static images. It was identified by `mdeck ai create` \
-             during automated presentation generation, suggesting it's a common need \
-             when creating presentations from real-world content.\n\n",
-            opp.description.to_lowercase()
-        ));
-
-        if !opp.fallback_image_prompt.is_empty() {
-            content.push_str("### Current Workaround\n\n");
-            content.push_str(&format!(
-                "MDeck currently generates an AI image as a fallback using this prompt:\n\n\
-                 > {}\n\n\
-                 While this produces a reasonable visual, a native interactive visualization \
-                 would be more precise, data-driven, and consistent with mdeck's other \
-                 visualization types.\n\n",
-                opp.fallback_image_prompt
-            ));
-        }
-
-        content.push_str("---\n\n");
+        content.push_str("### Implementation Notes\n\n");
+        content.push_str(
+            "MDeck renders visualizations from fenced code blocks with `@` language tags \
+             (e.g., `@barchart`, `@timeline`, `@architecture`). Each visualization type \
+             is implemented as a Rust rendering function in `crates/mdeck/src/render/`. \
+             The parser detects the `@` tag in `crates/mdeck/src/parser/blocks.rs` and \
+             creates a corresponding `Block` variant. Progressive reveal is supported \
+             via `+` and `*` list markers.\n\n",
+        );
     }
 
     std::fs::write(path, content)
@@ -1241,12 +1224,12 @@ mod tests {
         let outline = r#"{
             "opportunities": [
                 {
-                    "slide_title": "Data Flow",
                     "visualization_name": "Swimlane Diagram",
                     "description": "Shows cross-team workflow with parallel lanes",
                     "data_description": "Teams as horizontal lanes with tasks flowing between them",
-                    "suggested_syntax": "```@swimlane\n- Marketing -> Engineering: handoff\n```",
-                    "fallback_image_prompt": "A swimlane diagram showing cross-team workflow with parallel horizontal lanes for Marketing, Engineering, and QA"
+                    "rendering_description": "Horizontal lanes with arrows between them",
+                    "suggested_syntax": "- Marketing -> Engineering: handoff",
+                    "ascii_mockup": "| Marketing | --> | Engineering | --> | QA |"
                 }
             ]
         }"#;
@@ -1254,7 +1237,7 @@ mod tests {
         assert_eq!(opps.len(), 1);
         assert_eq!(opps[0].visualization_name, "Swimlane Diagram");
         assert!(opps[0].description.contains("cross-team"));
-        assert!(!opps[0].fallback_image_prompt.is_empty());
+        assert!(!opps[0].ascii_mockup.is_empty());
     }
 
     #[test]
@@ -1444,17 +1427,17 @@ mod tests {
     #[test]
     fn test_parse_opportunity_full() {
         let json = r#"{
-            "slide_title": "Flow Diagram",
             "visualization_name": "Swimlane Diagram",
             "description": "Shows parallel workflows",
             "data_description": "Teams and tasks",
-            "suggested_syntax": "@swimlane syntax here",
-            "fallback_image_prompt": "A swimlane diagram with three lanes"
+            "rendering_description": "Horizontal lanes with arrows",
+            "suggested_syntax": "- Marketing -> Engineering: handoff",
+            "ascii_mockup": "| Marketing | --> | Engineering |"
         }"#;
         let opp = parse_opportunity(json).unwrap();
-        assert_eq!(opp.slide_title, "Flow Diagram");
         assert_eq!(opp.visualization_name, "Swimlane Diagram");
-        assert!(!opp.fallback_image_prompt.is_empty());
+        assert!(!opp.rendering_description.is_empty());
+        assert!(!opp.ascii_mockup.is_empty());
     }
 
     #[test]
