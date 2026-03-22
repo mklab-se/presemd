@@ -167,7 +167,7 @@ pub fn draw_gitgraph(
 
     // Layout dimensions
     let label_margin = 130.0 * scale;
-    let right_margin = 40.0 * scale;
+    let right_margin = 80.0 * scale;
     let top_margin = 30.0 * scale;
     let bottom_margin = 30.0 * scale;
     let usable_width = max_width - label_margin - right_margin;
@@ -330,6 +330,9 @@ pub fn draw_gitgraph(
                 branch_events.entry(branch.clone()).or_default().push(x);
             }
             GitGraphItem::Merge { target, .. } => {
+                // Only add to target — the merge S-curve handles the visual
+                // connection from the source branch. Source branch line should
+                // end at its last commit/branch event, not extend to the merge X.
                 branch_events.entry(target.clone()).or_default().push(x);
             }
         }
@@ -484,11 +487,28 @@ pub fn draw_gitgraph(
                     Stroke::new(1.5 * scale, ring_color),
                 );
 
+                // Draw a horizontal line on the source branch from its last event
+                // to the merge curve start point
+                let source_last_x = branch_events
+                    .get(source)
+                    .and_then(|positions| positions.last().copied())
+                    .unwrap_or(pos.x + label_margin);
+                let curve_start_x = x - event_spacing * 0.4;
+                if curve_start_x > source_last_x + dot_radius {
+                    painter.line_segment(
+                        [
+                            Pos2::new(source_last_x + dot_radius, source_y),
+                            Pos2::new(curve_start_x, source_y),
+                        ],
+                        Stroke::new(line_width, merge_color),
+                    );
+                }
+
                 // S-curve merge line from source to target
                 let mid_x = x - event_spacing * 0.25;
                 let bezier = CubicBezierShape::from_points_stroke(
                     [
-                        Pos2::new(x - event_spacing * 0.4, source_y),
+                        Pos2::new(curve_start_x, source_y),
                         Pos2::new(mid_x, source_y),
                         Pos2::new(mid_x, target_y),
                         Pos2::new(x - dot_radius, target_y),
