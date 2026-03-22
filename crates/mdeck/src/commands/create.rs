@@ -217,13 +217,22 @@ fn resolve_input(args: &CreateArgs) -> Result<(String, String)> {
         return Ok(("(stdin)".to_string(), content));
     }
 
-    anyhow::bail!(
-        "No input provided. Use --input <file-or-text> or pipe content to stdin.\n\n\
-         Examples:\n  \
-         mdeck ai create --input document.pdf --output slides.md\n  \
-         mdeck ai create --input \"A talk about Rust\" --output slides.md\n  \
-         cat notes.txt | mdeck ai create --output slides.md"
-    );
+    // No input provided — show help (same as --help)
+    use clap::CommandFactory;
+    let mut cmd = crate::cli::Cli::command();
+    // Navigate to: mdeck → ai → create
+    for sub in cmd.get_subcommands_mut() {
+        if sub.get_name() == "ai" {
+            for sub2 in sub.get_subcommands_mut() {
+                if sub2.get_name() == "create" {
+                    sub2.clone().name("mdeck ai create").print_help()?;
+                    println!();
+                    std::process::exit(0);
+                }
+            }
+        }
+    }
+    anyhow::bail!("No input provided. Run `mdeck ai create --help` for usage.");
 }
 
 /// Extract text content from a file based on its extension.
