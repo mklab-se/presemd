@@ -814,14 +814,21 @@ Respond in JSON:
 }
 ```
 
-Supported mdeck visualizations:
+Supported mdeck visualizations (use these when appropriate — set visualization field to the tag name):
 - barchart, linechart, piechart, donut, stackedbar, scatter (data charts)
 - timeline, gantt (temporal)
 - orgchart, architecture (structural)
-- gitgraph (git branch diagrams: branches, commits, merges)
+- gitgraph (git branch diagrams — USE THIS for any branching strategy, Git Flow, \
+  merge workflows, etc. Syntax: `- branch main`, `- branch develop from main`, \
+  `- commit develop: \"msg\"`, `- merge feature -> develop: \"label\"`)
 - kpi, progress, funnel (metrics)
 - radar, venn (comparison)
 - wordcloud (text analysis)
+
+IMPORTANT: Always prefer a supported visualization over bullet points. For example, \
+if the topic involves git branches, merges, or branching strategies, USE @gitgraph. \
+If the topic involves timelines or processes over time, USE @timeline or @gantt. \
+Only add to opportunities if NONE of the above types can represent the concept.
 
 If a visualization would be useful but is NOT in the list above, add it to `opportunities`. \
 DEDUPLICATE: if multiple slides would benefit from the same visualization type, create \
