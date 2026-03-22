@@ -917,6 +917,9 @@ async fn run_generation(
           enhance the presentation's atmosphere or help set the mood for a section.\n\
         - Keep slide text concise — the presentation supports the presenter.\n\
         - Use **bold** and *italic* for emphasis.\n\
+        - NEVER use Unicode arrow characters (→, ←, ⇒, ⇐), checkmarks (✓, ✗), or other \
+          special Unicode symbols — they render as □ in mdeck. Use plain text alternatives \
+          instead: --, ->, <-, =>, \"leads to\", \"results in\", etc.\n\
         - Output ONLY the markdown content.{image_style_hint}{fallback_instructions}"
     );
 

@@ -172,11 +172,21 @@ pub fn draw_gitgraph(
     let bottom_margin = 30.0 * scale;
     let usable_width = max_width - label_margin - right_margin;
     let usable_height = height - top_margin - bottom_margin;
-    let lane_spacing = if num_branches > 1 {
+    // Cap lane spacing so branches don't spread too far apart
+    let max_lane_spacing = 120.0 * scale;
+    let natural_spacing = if num_branches > 1 {
         usable_height / (num_branches - 1) as f32
     } else {
         0.0
     };
+    let lane_spacing = natural_spacing.min(max_lane_spacing);
+    // Center the lanes vertically
+    let total_lane_height = if num_branches > 1 {
+        lane_spacing * (num_branches - 1) as f32
+    } else {
+        0.0
+    };
+    let lane_top = pos.y + top_margin + (usable_height - total_lane_height) / 2.0;
 
     // Y position for each branch lane
     let branch_y = |name: &str| -> f32 {
@@ -184,7 +194,7 @@ pub fn draw_gitgraph(
         if num_branches == 1 {
             pos.y + top_margin + usable_height / 2.0
         } else {
-            pos.y + top_margin + idx as f32 * lane_spacing
+            lane_top + idx as f32 * lane_spacing
         }
     };
 
@@ -205,7 +215,31 @@ pub fn draw_gitgraph(
         std::collections::HashMap::new();
     let mut branch_end_x: std::collections::HashMap<String, f32> = std::collections::HashMap::new();
 
+    // Determine the rightmost visible X position for extending branch lines
+    let mut max_visible_x = pos.x + label_margin + 50.0 * scale;
+    for (i, _item) in items.iter().enumerate() {
+        let step = steps.get(i).copied().unwrap_or(0);
+        if step <= reveal_step {
+            max_visible_x = max_visible_x.max(item_x(i));
+        }
+    }
+    // Extend a bit past the last event
+    let right_edge = max_visible_x + event_spacing * 0.5;
+
     // First pass: determine branch extents
+    // Branches that are "long-lived" (main, develop) extend to the right edge.
+    // Branches that get merged extend only to their merge point.
+    let mut merged_branches: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (i, item) in items.iter().enumerate() {
+        let step = steps.get(i).copied().unwrap_or(0);
+        if step > reveal_step {
+            continue;
+        }
+        if let GitGraphItem::Merge { source, .. } = item {
+            merged_branches.insert(source.clone());
+        }
+    }
+
     for (i, item) in items.iter().enumerate() {
         let step = steps.get(i).copied().unwrap_or(0);
         if step > reveal_step {
@@ -215,10 +249,15 @@ pub fn draw_gitgraph(
         match item {
             GitGraphItem::Branch { name, .. } => {
                 branch_start_x.entry(name.clone()).or_insert(x);
-                branch_end_x
-                    .entry(name.clone())
-                    .and_modify(|e| *e = e.max(x))
-                    .or_insert(x);
+                // If branch hasn't been merged yet, extend to right edge
+                if merged_branches.contains(name) {
+                    branch_end_x
+                        .entry(name.clone())
+                        .and_modify(|e| *e = e.max(x))
+                        .or_insert(x);
+                } else {
+                    branch_end_x.insert(name.clone(), right_edge);
+                }
             }
             GitGraphItem::Commit { branch, .. } => {
                 branch_start_x.entry(branch.clone()).or_insert(x);
@@ -226,17 +265,19 @@ pub fn draw_gitgraph(
                     .entry(branch.clone())
                     .and_modify(|e| *e = e.max(x))
                     .or_insert(x);
+                // Keep extending to right edge if not merged
+                if !merged_branches.contains(branch) {
+                    branch_end_x.insert(branch.clone(), right_edge);
+                }
             }
             GitGraphItem::Merge { source, target, .. } => {
-                // Source branch ends here, target branch continues
-                branch_end_x
-                    .entry(source.clone())
-                    .and_modify(|e| *e = e.max(x))
-                    .or_insert(x);
+                // Source branch ends at the merge point
+                branch_end_x.insert(source.clone(), x);
+                // Target branch continues to right edge
                 branch_end_x
                     .entry(target.clone())
-                    .and_modify(|e| *e = e.max(x))
-                    .or_insert(x);
+                    .and_modify(|e| *e = e.max(right_edge))
+                    .or_insert(right_edge);
             }
         }
     }
