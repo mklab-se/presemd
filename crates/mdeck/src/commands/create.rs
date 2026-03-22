@@ -41,7 +41,8 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
         anyhow::bail!("No content found in input. Please provide non-empty content.");
     }
 
-    if !quiet {
+    // Show input info for file/stdin sources, but not for text the user just typed
+    if !quiet && source_label != "(text input)" {
         eprintln!(
             "  {} {} ({} words)",
             "Input:".bold(),
@@ -531,18 +532,56 @@ fn build_full_context(content: &str, summary: &str) -> String {
 }
 
 /// Stream a chat response, printing tokens to stderr. Returns assembled text.
+/// The `[READY]` marker is suppressed from output but preserved in the returned string.
 async fn stream_chat(client: &ailloy::Client, history: &[ailloy::Message]) -> Result<String> {
     let mut stream = client.chat_stream(history).await?;
     let mut assembled = String::new();
+    // Buffer to detect and suppress [READY] marker from display
+    let mut display_buf = String::new();
+    const MARKER: &str = "[READY]";
 
     while let Some(event) = stream.next().await {
         match event? {
             ailloy::StreamEvent::Delta(text) => {
                 assembled.push_str(&text);
-                eprint!("{text}");
+                display_buf.push_str(&text);
+
+                // Check if we might be in the middle of [READY]
+                if MARKER.starts_with(&display_buf) {
+                    // Could still be building toward [READY] — hold the buffer
+                    continue;
+                }
+
+                if display_buf.contains(MARKER) {
+                    // Found [READY] — print everything before it, discard the marker
+                    let before = display_buf.split(MARKER).next().unwrap_or("");
+                    if !before.is_empty() {
+                        eprint!("{before}");
+                    }
+                    // Print anything after the marker (unlikely but handle it)
+                    let after_idx = display_buf.find(MARKER).unwrap() + MARKER.len();
+                    let after = &display_buf[after_idx..];
+                    if !after.is_empty() {
+                        eprint!("{after}");
+                    }
+                    display_buf.clear();
+                } else {
+                    // No marker possible — flush the buffer
+                    eprint!("{display_buf}");
+                    display_buf.clear();
+                }
                 io::stderr().flush()?;
             }
             ailloy::StreamEvent::Done(_) => {
+                // Flush any remaining buffer (excluding [READY])
+                if !display_buf.is_empty() && !display_buf.contains(MARKER) {
+                    eprint!("{display_buf}");
+                } else if display_buf.contains(MARKER) {
+                    let before = display_buf.split(MARKER).next().unwrap_or("");
+                    if !before.is_empty() {
+                        eprint!("{before}");
+                    }
+                }
                 eprintln!();
             }
         }
