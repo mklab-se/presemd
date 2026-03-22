@@ -174,20 +174,40 @@ pub async fn run(args: CreateArgs, quiet: bool) -> Result<()> {
         write_opportunities(&opp_file, &opportunities)?;
         eprintln!();
         eprintln!(
-            "  {} This presentation could be even better. MDeck identified {} \
-             visualization{} that {} not yet supported but would enhance the slides.",
+            "  {} This presentation could be even better.",
             "!".yellow().bold(),
+        );
+        eprintln!(
+            "    MDeck identified {} visualization{} that would enhance the slides",
             opportunities.len(),
             if opportunities.len() == 1 { "" } else { "s" },
+        );
+        eprintln!(
+            "    but {} not yet supported.",
             if opportunities.len() == 1 {
                 "is"
             } else {
                 "are"
             }
         );
-        eprintln!("    Details: {}", opp_file.display());
+        eprintln!();
         eprintln!(
-            "    Help improve MDeck: {}",
+            "    The file {} contains detailed feature request{}",
+            opp_file.display().to_string().cyan(),
+            if opportunities.len() == 1 { "" } else { "s" },
+        );
+        eprintln!(
+            "    ready to be copied into a GitHub issue. By sharing {} you help",
+            if opportunities.len() == 1 {
+                "it,"
+            } else {
+                "them,"
+            }
+        );
+        eprintln!("    yourself and the MDeck community.");
+        eprintln!();
+        eprintln!(
+            "    {}",
             "https://github.com/mklab-se/mdeck/issues/new".cyan()
         );
     }
@@ -783,12 +803,12 @@ Respond in JSON:
   ],
   \"opportunities\": [
     {
-      \"visualization_name\": \"Short descriptive name (e.g. Git Branch Diagram)\",
-      \"description\": \"2-3 sentences: what this visualization shows, why it matters, and why bullet points or AI-generated images are not adequate substitutes\",
-      \"data_description\": \"Detailed description of the data model: what entities exist, their relationships, how they map to visual elements (nodes, edges, lanes, axes, etc.)\",
-      \"rendering_description\": \"How the visualization should look when rendered: layout direction, positioning, colors, labels, what gets drawn and where. Be specific enough that an implementer can sketch a mockup.\",
-      \"suggested_syntax\": \"Complete multi-line mdeck syntax example showing a realistic use case with 3-5 data points. Use the @tag fenced code block pattern consistent with mdeck's existing visualizations.\",
-      \"ascii_mockup\": \"A simple ASCII art sketch of what the rendered visualization would look like\"
+      \"visualization_name\": \"General name for a REUSABLE visualization type (e.g. Branch Graph, Flow Diagram, State Machine — NOT Git Flow Branch Diagram). Think: what would this be called if it were a library component?\",
+      \"description\": \"2-3 sentences: what this GENERAL visualization type shows, why it matters, and why bullet points or AI-generated images are not adequate substitutes. Describe the category of visualization, not just this specific use case.\",
+      \"data_description\": \"Detailed description of the data model: what entities exist, their relationships, how they map to visual elements (nodes, edges, lanes, axes, etc.). Think generically — what data would ANY use of this visualization need?\",
+      \"rendering_description\": \"How the visualization should look when rendered: layout direction, positioning, colors, labels, what gets drawn and where. Be specific enough that an implementer can build it.\",
+      \"suggested_syntax\": \"Complete multi-line mdeck syntax example using the - item per line pattern consistent with mdeck's other visualizations. Show a realistic example with 3-5 data points. Each line should be a separate item, NOT a one-liner.\",
+      \"ascii_mockup\": \"A multi-line ASCII art sketch showing what the rendered output would look like. Use actual newlines between lines, not escaped newlines.\"
     }
   ]
 }
@@ -1061,7 +1081,12 @@ fn parse_opportunity(json: &str) -> Option<VisualizationOpportunity> {
         let mut escaped = false;
         for c in value_start.chars() {
             if escaped {
-                result.push(c);
+                match c {
+                    'n' => result.push('\n'),
+                    't' => result.push('\t'),
+                    'r' => result.push('\r'),
+                    _ => result.push(c), // \", \\, etc.
+                }
                 escaped = false;
             } else if c == '\\' {
                 escaped = true;
