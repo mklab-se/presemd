@@ -610,6 +610,56 @@ fn read_user_input() -> Result<Option<String>> {
     }
 }
 
+// ── Spinner ─────────────────────────────────────────────────────────────────
+
+/// A terminal spinner that animates on a background thread.
+struct Spinner {
+    handle: Option<std::thread::JoinHandle<()>>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl Spinner {
+    /// Start a spinner with the given message. The spinner animates until `stop()` is called.
+    fn start(message: String) -> Self {
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stop_clone = stop.clone();
+        let handle = std::thread::spawn(move || {
+            const FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+            let mut i = 0;
+            while !stop_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                eprint!("\r  {} {}", FRAMES[i % FRAMES.len()], message);
+                let _ = io::stderr().flush();
+                i += 1;
+                std::thread::sleep(std::time::Duration::from_millis(80));
+            }
+        });
+        Self {
+            handle: Some(handle),
+            stop,
+        }
+    }
+
+    /// Stop the spinner and replace its line with a completion message.
+    fn stop_with(mut self, message: &str) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+        // Clear the spinner line and print the completion message
+        eprint!("\r\x1b[2K  {message}\n");
+        let _ = io::stderr().flush();
+    }
+}
+
+impl Drop for Spinner {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
 // ── AI pipeline ─────────────────────────────────────────────────────────────
 
 /// Suggest a filename based on the presentation context.
@@ -644,16 +694,17 @@ async fn run_pipeline(
     style: &Option<String>,
     quiet: bool,
 ) -> Result<(String, Vec<VisualizationOpportunity>)> {
-    // Step A: Analyze content and create outline (silent — no output to user)
-    if !quiet {
-        eprint!("  {} Analyzing content...", "⠋".dimmed());
-        io::stderr().flush()?;
-    }
+    // Step A: Analyze content and create outline
+    let spinner = if !quiet {
+        Some(Spinner::start("Analyzing content...".to_string()))
+    } else {
+        None
+    };
 
     let outline = run_analysis(client, content, context).await?;
 
-    if !quiet {
-        eprint!("\r  {} Content analyzed.   \n", "✓".green().bold());
+    if let Some(s) = spinner {
+        s.stop_with(&format!("{} Content analyzed.", "✓".green().bold()));
     }
 
     // Extract opportunities from the outline
@@ -667,14 +718,18 @@ async fn run_pipeline(
         .max(1);
 
     // Step B: Generate slides
-    if !quiet {
-        eprintln!("  {} Generating ~{} slides...", "⠋".dimmed(), slide_count);
-    }
+    let spinner = if !quiet {
+        Some(Spinner::start(format!(
+            "Generating ~{slide_count} slides..."
+        )))
+    } else {
+        None
+    };
 
     let presentation_md = run_generation(client, &outline, context, style, &opportunities).await?;
 
-    if !quiet {
-        eprint!("\r  {} Presentation generated.\n", "✓".green().bold());
+    if let Some(s) = spinner {
+        s.stop_with(&format!("{} Presentation generated.", "✓".green().bold()));
     }
 
     Ok((presentation_md, opportunities))
