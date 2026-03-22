@@ -936,6 +936,21 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_input_interactive_with_input_provided() {
+        // When interactive mode is on BUT --input is provided, it should use the input directly
+        let args = CreateArgs {
+            input: Some("A talk about functional programming".to_string()),
+            output: PathBuf::from("out.md"),
+            prompt: None,
+            interactive: true,
+            style: None,
+        };
+        let (label, content) = resolve_input(&args, true).unwrap();
+        assert_eq!(label, "(text input)");
+        assert_eq!(content, "A talk about functional programming");
+    }
+
+    #[test]
     fn test_resolve_output_markdown_extension() {
         let (file, _dir) = resolve_output(Path::new("talk.markdown")).unwrap();
         assert_eq!(file, PathBuf::from("talk.markdown"));
